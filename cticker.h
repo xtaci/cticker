@@ -17,10 +17,13 @@ typedef struct {
     uint64_t timestamp;
 } TickerData;
 
-// Price history point
+// Price history point (candlestick)
 typedef struct {
     uint64_t timestamp;
-    double price;
+    double open;
+    double high;
+    double low;
+    double close;
 } PricePoint;
 
 // Configuration structure
@@ -31,9 +34,14 @@ typedef struct {
 
 // Period enum
 typedef enum {
+    PERIOD_1MIN,
+    PERIOD_15MIN,
+    PERIOD_1HOUR,
+    PERIOD_4HOUR,
     PERIOD_1DAY,
     PERIOD_1WEEK,
-    PERIOD_1MONTH
+    PERIOD_1MONTH,
+    PERIOD_COUNT
 } Period;
 
 // Function declarations

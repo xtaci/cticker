@@ -40,6 +40,7 @@ int load_config(Config *config) {
         strcpy(config->symbols[0], "BTCUSDT");
         strcpy(config->symbols[1], "ETHUSDT");
         strcpy(config->symbols[2], "BNBUSDT");
+        save_config(config);
         return 0;
     }
     

@@ -57,6 +57,33 @@ static void format_number(char *buf, size_t size, double num) {
     }
 }
 
+static const char* period_label(Period period) {
+    switch (period) {
+        case PERIOD_1MIN: return "1 Minute";
+        case PERIOD_15MIN: return "15 Minutes";
+        case PERIOD_1HOUR: return "1 Hour";
+        case PERIOD_4HOUR: return "4 Hours";
+        case PERIOD_1DAY: return "1 Day";
+        case PERIOD_1WEEK: return "1 Week";
+        case PERIOD_1MONTH: return "1 Month";
+        default: return "Unknown";
+    }
+}
+
+static int price_to_row(double price, double min_price, double max_price,
+                        int chart_height, int chart_y) {
+    double range = max_price - min_price;
+    if (range <= 0.0000001) {
+        range = 1.0;
+    }
+    double normalized = (price - min_price) / range;
+    if (normalized < 0.0) normalized = 0.0;
+    if (normalized > 1.0) normalized = 1.0;
+    int usable_height = chart_height - 1;
+    if (usable_height < 1) usable_height = 1;
+    return chart_y + chart_height - 1 - (int)(normalized * usable_height);
+}
+
 // Draw main screen with ticker board
 void draw_main_screen(TickerData *tickers, int count, int selected) {
     werase(main_win);
@@ -117,95 +144,105 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     wrefresh(main_win);
 }
 
-// Draw ASCII chart
+// Draw candlestick chart that fills the screen width
 void draw_chart(const char *symbol, PricePoint *points, int count, Period period) {
     werase(main_win);
-    
+
     if (count == 0) {
         mvwprintw(main_win, LINES / 2, COLS / 2 - 10, "No data available");
         wrefresh(main_win);
         return;
     }
-    
-    // Draw title
-    const char *period_str = (period == PERIOD_1DAY) ? "1 Day" :
-                             (period == PERIOD_1WEEK) ? "1 Week" : "1 Month";
+
+    const char *period_str = period_label(period);
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "%s - %s Chart", symbol, period_str);
+    mvwprintw(main_win, 0, 2, "%s - %s Candlestick Chart", symbol, period_str);
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
-    
-    // Find min and max prices
-    double min_price = points[0].price;
-    double max_price = points[0].price;
+
+    double min_price = points[0].low;
+    double max_price = points[0].high;
     for (int i = 1; i < count; i++) {
-        if (points[i].price < min_price) min_price = points[i].price;
-        if (points[i].price > max_price) max_price = points[i].price;
+        if (points[i].low < min_price) min_price = points[i].low;
+        if (points[i].high > max_price) max_price = points[i].high;
     }
-    
-    // Chart dimensions
-    int chart_height = LINES - 6;
-    int chart_width = COLS - 20;
+    if (max_price - min_price < 0.000001) {
+        min_price -= 1.0;
+        max_price += 1.0;
+    }
+
     int chart_y = 2;
-    int chart_x = 15;
-    
+    int chart_height = LINES - 6;
+    if (chart_height < 4) chart_height = 4;
+    int axis_width = 12;
+    int chart_x = axis_width + 2;
+    int chart_width = COLS - chart_x - 2;
+    if (chart_width < 1) chart_width = 1;
+
     double price_range = max_price - min_price;
-    if (price_range < 0.000001) price_range = 1.0;  // Avoid division by zero
-    
-    // Draw Y-axis labels
+
+    // Y-axis labels
     for (int i = 0; i <= 4; i++) {
         double price = max_price - (price_range * i / 4.0);
         char price_str[16];
         format_number(price_str, sizeof(price_str), price);
-        mvwprintw(main_win, chart_y + (chart_height * i / 4), 2, "%12s", price_str);
+        mvwprintw(main_win, chart_y + (chart_height * i / 4), 2, "%10s", price_str);
     }
-    
-    // Draw chart
-    int prev_y = -1;
-    for (int i = 0; i < count && i < chart_width; i++) {
-        int x = chart_x + (i * chart_width / count);
-        double normalized = (points[i].price - min_price) / price_range;
-        int y = chart_y + chart_height - (int)(normalized * chart_height);
-        
-        if (y >= chart_y && y < chart_y + chart_height) {
-            // Determine color based on price change
-            int color = COLOR_PAIR_GREEN;
-            if (i > 0 && points[i].price < points[i-1].price) {
-                color = COLOR_PAIR_RED;
-            }
-            
-            wattron(main_win, COLOR_PAIR(color));
-            
-            // Draw line from previous point
-            if (prev_y >= 0) {
-                int start_y = prev_y < y ? prev_y : y;
-                int end_y = prev_y < y ? y : prev_y;
-                for (int ly = start_y; ly <= end_y; ly++) {
-                    mvwaddch(main_win, ly, x, ACS_VLINE);
-                }
-            } else {
-                mvwaddch(main_win, y, x, ACS_DIAMOND);
-            }
-            
-            wattroff(main_win, COLOR_PAIR(color));
-            prev_y = y;
+
+    double step = (count > 1 && chart_width > 1) ? (double)(count - 1) / (double)(chart_width - 1) : 0.0;
+
+    for (int x = 0; x < chart_width; x++) {
+        size_t idx = (size_t)(x * step + 0.5);
+        if (idx >= (size_t)count) idx = count - 1;
+        PricePoint *pt = &points[idx];
+        int screen_x = chart_x + x;
+
+        int high_y = price_to_row(pt->high, min_price, max_price, chart_height, chart_y);
+        int low_y = price_to_row(pt->low, min_price, max_price, chart_height, chart_y);
+        int open_y = price_to_row(pt->open, min_price, max_price, chart_height, chart_y);
+        int close_y = price_to_row(pt->close, min_price, max_price, chart_height, chart_y);
+
+        int wick_top = high_y < low_y ? high_y : low_y;
+        int wick_bottom = high_y > low_y ? high_y : low_y;
+        int body_top = open_y < close_y ? open_y : close_y;
+        int body_bottom = open_y > close_y ? open_y : close_y;
+
+        int color_pair = (pt->close >= pt->open) ? COLOR_PAIR(COLOR_PAIR_GREEN) : COLOR_PAIR(COLOR_PAIR_RED);
+        wattron(main_win, color_pair);
+
+        for (int y = wick_top; y <= wick_bottom; y++) {
+            mvwaddch(main_win, y, screen_x, '|');
         }
+
+        if (body_top == body_bottom) {
+            mvwaddch(main_win, body_top, screen_x, ACS_CKBOARD);
+        } else {
+            for (int y = body_top; y <= body_bottom; y++) {
+                mvwaddch(main_win, y, screen_x, ACS_CKBOARD);
+            }
+        }
+
+        wattroff(main_win, color_pair);
     }
-    
-    // Draw current price
-    char current_price[32];
-    format_number(current_price, sizeof(current_price), points[count - 1].price);
-    mvwprintw(main_win, LINES - 4, 2, "Current Price: %s", current_price);
-    
-    // Draw price change
-    double change = ((points[count - 1].price - points[0].price) / points[0].price) * 100;
-    int color = change >= 0 ? COLOR_PAIR_GREEN : COLOR_PAIR_RED;
-    wattron(main_win, COLOR_PAIR(color));
-    mvwprintw(main_win, LINES - 4, 30, "Change: %+.2f%%", change);
-    wattroff(main_win, COLOR_PAIR(color));
-    
-    // Draw help text
-    mvwprintw(main_win, LINES - 2, 2, "Keys: 1: 1 Day | 7: 1 Week | 30: 1 Month | ESC/q: Back");
-    
+
+    PricePoint *last = &points[count - 1];
+    char open_str[16], high_str[16], low_str[16], close_str[16], change_str[16];
+    format_number(open_str, sizeof(open_str), last->open);
+    format_number(high_str, sizeof(high_str), last->high);
+    format_number(low_str, sizeof(low_str), last->low);
+    format_number(close_str, sizeof(close_str), last->close);
+
+    double change = ((last->close - last->open) / last->open) * 100.0;
+    snprintf(change_str, sizeof(change_str), "%+.2f%%", change);
+
+    mvwprintw(main_win, LINES - 5, 2, "O:%s H:%s L:%s C:%s", open_str, high_str, low_str, close_str);
+    int color = change >= 0 ? COLOR_PAIR(COLOR_PAIR_GREEN) : COLOR_PAIR(COLOR_PAIR_RED);
+    wattron(main_win, color);
+    mvwprintw(main_win, LINES - 4, 2, "Change: %s", change_str);
+    wattroff(main_win, color);
+
+    mvwprintw(main_win, LINES - 3, 2, "Interval: %s (Left/Right to change)", period_str);
+    mvwprintw(main_win, LINES - 2, 2, "Keys: Left/Right Interval | ESC/q: Back");
+
     wrefresh(main_win);
 }
 

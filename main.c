@@ -43,6 +43,23 @@ static void* fetch_data_thread(void *arg) {
     return NULL;
 }
 
+static int reload_chart_data(const char *symbol, Period period,
+                             PricePoint **points, int *count) {
+    PricePoint *new_points = NULL;
+    int new_count = 0;
+    int rc = fetch_historical_data(symbol, period, &new_points, &new_count);
+    if (rc == 0) {
+        if (*points) {
+            free(*points);
+        }
+        *points = new_points;
+        *count = new_count;
+    } else if (new_points) {
+        free(new_points);
+    }
+    return rc;
+}
+
 // Main function
 int main(int argc, char *argv[]) {
     (void)argc;
@@ -50,7 +67,7 @@ int main(int argc, char *argv[]) {
     
     Config config;
     int selected = 0;
-    Period current_period = PERIOD_1DAY;
+    Period current_period = PERIOD_1HOUR;
     bool show_chart = false;
     char chart_symbol[MAX_SYMBOL_LEN] = {0};
     PricePoint *chart_points = NULL;
@@ -120,6 +137,22 @@ int main(int argc, char *argv[]) {
         
         if (show_chart) {
             switch (ch) {
+                case KEY_LEFT:
+                    current_period = (current_period == PERIOD_1MIN)
+                        ? (Period)(PERIOD_COUNT - 1)
+                        : (Period)(current_period - 1);
+                    if (reload_chart_data(chart_symbol, current_period,
+                                          &chart_points, &chart_count) != 0) {
+                        beep();
+                    }
+                    break;
+                case KEY_RIGHT:
+                    current_period = (Period)((current_period + 1) % PERIOD_COUNT);
+                    if (reload_chart_data(chart_symbol, current_period,
+                                          &chart_points, &chart_count) != 0) {
+                        beep();
+                    }
+                    break;
                 case 'q':
                 case 'Q':
                 case 27:  // ESC
@@ -129,25 +162,6 @@ int main(int argc, char *argv[]) {
                         chart_points = NULL;
                         chart_count = 0;
                     }
-                    break;
-                case '1':
-                    current_period = PERIOD_1DAY;
-                    if (chart_points) free(chart_points);
-                    fetch_historical_data(chart_symbol, current_period, 
-                                         &chart_points, &chart_count);
-                    break;
-                case '7':
-                    current_period = PERIOD_1WEEK;
-                    if (chart_points) free(chart_points);
-                    fetch_historical_data(chart_symbol, current_period, 
-                                         &chart_points, &chart_count);
-                    break;
-                case '3':
-                case '0':
-                    current_period = PERIOD_1MONTH;
-                    if (chart_points) free(chart_points);
-                    fetch_historical_data(chart_symbol, current_period, 
-                                         &chart_points, &chart_count);
                     break;
             }
         } else {
@@ -162,15 +176,15 @@ int main(int argc, char *argv[]) {
                 case '\r':
                 case KEY_ENTER:
                     // Fetch historical data and show chart
-                    current_period = PERIOD_1DAY;
-                    // Get symbol safely with mutex
                     pthread_mutex_lock(&data_mutex);
                     strcpy(chart_symbol, global_tickers[selected].symbol);
                     pthread_mutex_unlock(&data_mutex);
                     
-                    if (fetch_historical_data(chart_symbol, current_period, 
-                                             &chart_points, &chart_count) == 0) {
+                    if (reload_chart_data(chart_symbol, current_period,
+                                           &chart_points, &chart_count) == 0) {
                         show_chart = true;
+                    } else {
+                        beep();
                     }
                     break;
                 case 'q':

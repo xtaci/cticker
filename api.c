@@ -93,17 +93,34 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
 // Get interval string and limit for period
 static void get_interval_params(Period period, const char **interval, int *limit) {
     switch (period) {
-        case PERIOD_1DAY:
+        case PERIOD_1MIN:
+            *interval = "1m";
+            *limit = 240;  // 4 hours of 1-minute candles
+            break;
+        case PERIOD_15MIN:
             *interval = "15m";
-            *limit = 96;  // 24 hours in 15-min intervals
+            *limit = 192;  // 2 days of 15-minute candles
+            break;
+        case PERIOD_1HOUR:
+            *interval = "1h";
+            *limit = 168;  // 1 week of hourly candles
+            break;
+        case PERIOD_4HOUR:
+            *interval = "4h";
+            *limit = 180;  // ~30 days of 4-hour candles
+            break;
+        case PERIOD_1DAY:
+            *interval = "1d";
+            *limit = 120;  // ~4 months of daily candles
             break;
         case PERIOD_1WEEK:
-            *interval = "1h";
-            *limit = 168;  // 7 days in 1-hour intervals
+            *interval = "1w";
+            *limit = 104;  // 2 years of weekly candles
             break;
         case PERIOD_1MONTH:
-            *interval = "4h";
-            *limit = 180;  // ~30 days in 4-hour intervals
+        default:
+            *interval = "1M";
+            *limit = 120;  // 10 years of monthly candles
             break;
     }
 }
@@ -161,11 +178,20 @@ int fetch_historical_data(const char *symbol, Period period, PricePoint **points
         if (!json_is_array(kline)) continue;
         
         json_t *timestamp = json_array_get(kline, 0);
+        json_t *open_price = json_array_get(kline, 1);
+        json_t *high_price = json_array_get(kline, 2);
+        json_t *low_price = json_array_get(kline, 3);
         json_t *close_price = json_array_get(kline, 4);
         
-        if (json_is_integer(timestamp) && json_is_string(close_price)) {
-            (*points)[*count].timestamp = json_integer_value(timestamp) / 1000;
-            (*points)[*count].price = atof(json_string_value(close_price));
+        if (json_is_integer(timestamp) && json_is_string(open_price) &&
+            json_is_string(high_price) && json_is_string(low_price) &&
+            json_is_string(close_price)) {
+            PricePoint *point = &(*points)[*count];
+            point->timestamp = json_integer_value(timestamp) / 1000;
+            point->open = atof(json_string_value(open_price));
+            point->high = atof(json_string_value(high_price));
+            point->low = atof(json_string_value(low_price));
+            point->close = atof(json_string_value(close_price));
             (*count)++;
         }
     }
