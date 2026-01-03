@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include "cticker.h"
 
 #define COLOR_PAIR_GREEN 1
@@ -44,13 +45,7 @@ void cleanup_ui(void) {
 
 // Format large numbers with K, M, B suffixes
 static void format_number(char *buf, size_t size, double num) {
-    if (num >= 1000000000) {
-        snprintf(buf, size, "%.2fB", num / 1000000000);
-    } else if (num >= 1000000) {
-        snprintf(buf, size, "%.2fM", num / 1000000);
-    } else if (num >= 1000) {
-        snprintf(buf, size, "%.2fK", num / 1000);
-    } else if (num >= 1) {
+    if (fabs(num) >= 1.0) {
         snprintf(buf, size, "%.2f", num);
     } else {
         snprintf(buf, size, "%.8f", num);
