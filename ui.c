@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <math.h>
 #include "cticker.h"
 
 #define COLOR_PAIR_GREEN 1
@@ -31,6 +30,8 @@ void init_ui(void) {
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
+    keypad(main_win, TRUE);
+    wtimeout(main_win, 1000);
 }
 
 // Cleanup UI
@@ -111,7 +112,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     }
     
     // Draw help text
-    mvwprintw(main_win, LINES - 2, 2, "Keys: ↑/↓ Navigate | Enter: View Chart | q: Quit");
+    mvwprintw(main_win, LINES - 2, 2, "Keys: Up/Down Navigate | Enter: View Chart | q: Quit");
     
     wrefresh(main_win);
 }
