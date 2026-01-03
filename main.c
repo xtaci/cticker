@@ -52,6 +52,7 @@ int main(int argc, char *argv[]) {
     int selected = 0;
     Period current_period = PERIOD_1DAY;
     bool show_chart = false;
+    char chart_symbol[MAX_SYMBOL_LEN] = {0};
     PricePoint *chart_points = NULL;
     int chart_count = 0;
     pthread_t fetch_thread;
@@ -100,7 +101,7 @@ int main(int argc, char *argv[]) {
     // Main loop
     while (running) {
         if (show_chart) {
-            draw_chart(global_tickers[selected].symbol, chart_points, chart_count, current_period);
+            draw_chart(chart_symbol, chart_points, chart_count, current_period);
         } else {
             pthread_mutex_lock(&data_mutex);
             TickerData *tickers_copy = malloc(ticker_count * sizeof(TickerData));
@@ -132,20 +133,20 @@ int main(int argc, char *argv[]) {
                 case '1':
                     current_period = PERIOD_1DAY;
                     if (chart_points) free(chart_points);
-                    fetch_historical_data(global_tickers[selected].symbol, current_period, 
+                    fetch_historical_data(chart_symbol, current_period, 
                                          &chart_points, &chart_count);
                     break;
                 case '7':
                     current_period = PERIOD_1WEEK;
                     if (chart_points) free(chart_points);
-                    fetch_historical_data(global_tickers[selected].symbol, current_period, 
+                    fetch_historical_data(chart_symbol, current_period, 
                                          &chart_points, &chart_count);
                     break;
                 case '3':
                 case '0':
                     current_period = PERIOD_1MONTH;
                     if (chart_points) free(chart_points);
-                    fetch_historical_data(global_tickers[selected].symbol, current_period, 
+                    fetch_historical_data(chart_symbol, current_period, 
                                          &chart_points, &chart_count);
                     break;
             }
@@ -162,7 +163,12 @@ int main(int argc, char *argv[]) {
                 case KEY_ENTER:
                     // Fetch historical data and show chart
                     current_period = PERIOD_1DAY;
-                    if (fetch_historical_data(global_tickers[selected].symbol, current_period, 
+                    // Get symbol safely with mutex
+                    pthread_mutex_lock(&data_mutex);
+                    strcpy(chart_symbol, global_tickers[selected].symbol);
+                    pthread_mutex_unlock(&data_mutex);
+                    
+                    if (fetch_historical_data(chart_symbol, current_period, 
                                              &chart_points, &chart_count) == 0) {
                         show_chart = true;
                     }

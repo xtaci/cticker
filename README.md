@@ -109,6 +109,12 @@ Edit the configuration file at `~/.cticker.conf` to add or remove trading pairs:
 nano ~/.cticker.conf
 ```
 
+Or copy the example configuration:
+
+```bash
+cp example.conf ~/.cticker.conf
+```
+
 Add one trading pair per line (use Binance symbol format):
 ```
 BTCUSDT
@@ -184,6 +190,7 @@ No API key is required as we only use public endpoints.
 - Check your internet connection
 - Verify that api.binance.com is accessible
 - Some networks may block Binance API access
+- The application requires internet access to fetch price data
 
 **Display issues**
 - Ensure your terminal supports colors
@@ -194,6 +201,16 @@ No API key is required as we only use public endpoints.
 - Verify all dependencies are installed using `make check-deps`
 - Check that pkg-config is installed
 - Ensure you have a C compiler (gcc or clang)
+
+## Testing
+
+A test script is provided to verify the configuration system:
+
+```bash
+./test.sh
+```
+
+This tests configuration loading, saving, and reloading without requiring network access.
 
 ## Contributing
 

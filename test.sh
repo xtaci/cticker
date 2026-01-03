@@ -56,6 +56,15 @@ int main() {
 }
 EOF
 
+# Compile config.c first if needed
+if [ ! -f config.o ]; then
+    gcc -c config.c -I. -o config.o
+    if [ $? -ne 0 ]; then
+        echo "Test 1: FAILED - config.c compilation error"
+        exit 1
+    fi
+fi
+
 gcc -o test_config test_config.c config.o -I.
 if [ $? -eq 0 ]; then
     ./test_config
