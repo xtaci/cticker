@@ -85,7 +85,7 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
  * - lastPrice
  * - priceChangePercent
  */
-int fetch_ticker_data(const char *symbol, TickerData *data) {
+int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data) {
     CURL *curl;
     CURLcode res;
     char url[512];
@@ -191,7 +191,8 @@ static void get_interval_params(Period period, const char **interval, int *limit
  * - [3] low
  * - [4] close
  */
-int fetch_historical_data(const char *symbol, Period period, PricePoint **points, int *count) {
+int fetch_historical_data(const char *restrict symbol, Period period,
+                          PricePoint **restrict points, int *restrict count) {
     CURL *curl;
     CURLcode res;
     char url[512];

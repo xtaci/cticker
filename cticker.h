@@ -141,7 +141,7 @@ int save_config(const Config *config);
  * @param[out] data Output structure to fill.
  * @return 0 on success, non-zero on failure.
  */
-int fetch_ticker_data(const char *symbol, TickerData *data);
+int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data);
 
 /**
  * @brief Fetch historical candlestick (OHLC) data for charting.
@@ -155,7 +155,8 @@ int fetch_ticker_data(const char *symbol, TickerData *data);
  * @param[out] count Number of valid points stored in @p *points.
  * @return 0 on success, non-zero on failure.
  */
-int fetch_historical_data(const char *symbol, Period period, PricePoint **points, int *count);
+int fetch_historical_data(const char *restrict symbol, Period period,
+                          PricePoint **restrict points, int *restrict count);
 ///@}
 
 /** @name UI functions */
@@ -199,8 +200,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected);
  * @param[in] period Time interval label for the chart.
  * @param[in] selected_index Selected candle index within @p points.
  */
-void draw_chart(const char *symbol, PricePoint *points, int count, Period period,
-                int selected_index);
+void draw_chart(const char *restrict symbol, PricePoint *restrict points, int count,
+                Period period, int selected_index);
 
 /**
  * @brief Read a key press from the UI.
