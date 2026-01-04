@@ -183,13 +183,19 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         mvwprintw(main_win, chart_y + (chart_height * i / 4), 2, "%10s", price_str);
     }
 
-    double step = (count > 1 && chart_width > 1) ? (double)(count - 1) / (double)(chart_width - 1) : 0.0;
+    const int candle_stride = 2;  // 1 column for body + 1 column gap for readability
+    int candle_columns = chart_width / candle_stride;
+    if (candle_columns < 1) candle_columns = 1;
 
-    for (int x = 0; x < chart_width; x++) {
-        size_t idx = (size_t)(x * step + 0.5);
+    double step = (count > 1 && candle_columns > 1)
+        ? (double)(count - 1) / (double)(candle_columns - 1)
+        : 0.0;
+
+    for (int col = 0; col < candle_columns; col++) {
+        size_t idx = (size_t)(col * step + 0.5);
         if (idx >= (size_t)count) idx = count - 1;
         PricePoint *pt = &points[idx];
-        int screen_x = chart_x + x;
+        int screen_x = chart_x + col * candle_stride;
 
         int high_y = price_to_row(pt->high, min_price, max_price, chart_height, chart_y);
         int low_y = price_to_row(pt->low, min_price, max_price, chart_height, chart_y);
