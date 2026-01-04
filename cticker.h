@@ -174,6 +174,14 @@ void init_ui(void);
 void cleanup_ui(void);
 
 /**
+ * @brief Render the startup splash screen.
+ *
+ * Intended to be shown while the first batch of market data is being fetched
+ * so the user doesn't see a blank screen.
+ */
+void draw_splash_screen(void);
+
+/**
  * @brief Render the main price board.
  *
  * @param[in] tickers Array of ticker rows to display.

@@ -157,6 +157,10 @@ int main(int argc, char *argv[]) {
     
     /* Initialize UI (ncurses). From this point, exit via cleanup_ui(). */
     init_ui();
+
+    // Show a splash screen while the first batch of data is being fetched.
+    // This avoids a blank (black) screen on slow networks.
+    draw_splash_screen();
     
     /* Start data fetching thread. */
     if (pthread_create(&fetch_thread, NULL, fetch_data_thread, &config) != 0) {

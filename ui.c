@@ -215,6 +215,79 @@ void cleanup_ui(void) {
     endwin();
 }
 
+/**
+ * @brief Render a startup splash screen while initial data is loading.
+ *
+ * This is intentionally lightweight: we draw once and return. The caller
+ * should proceed to fetch the first batch of data; once done, the normal
+ * price board rendering will overwrite this screen.
+ */
+void draw_splash_screen(void) {
+    if (!main_win) {
+        return;
+    }
+
+    werase(main_win);
+
+    static const char *art[] = {
+        "  _____ _______ _      _             ",
+        " / ____|__   __(_)    | |            ",
+        "| |       | |   _  ___| | _____ _ __ ",
+        "| |       | |  | |/ __| |/ / _ \\ '__|",
+        "| |____   | |  | | (__|   <  __/ |   ",
+        " \\_____|  |_|  |_|\\___|_|\\_\\___|_|   ",
+        NULL
+    };
+
+    int art_lines = 0;
+    int art_width = 0;
+    for (int i = 0; art[i] != NULL; ++i) {
+        int len = (int)strlen(art[i]);
+        if (len > art_width) art_width = len;
+        art_lines++;
+    }
+
+    const char *loading1 = "Loading...";
+    const char *loading2 = "Fetching data from Binance API";
+
+    int total_lines = art_lines + 2 + 2;  // art + blank + two loading lines
+    int start_y = (LINES - total_lines) / 2;
+    if (start_y < 0) start_y = 0;
+
+    int start_x = (COLS - art_width) / 2;
+    if (start_x < 0) start_x = 0;
+
+    if (colors_available) {
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
+    }
+
+    int y = start_y;
+    for (int i = 0; art[i] != NULL; ++i) {
+        mvwaddnstr(main_win, y++, start_x, art[i], COLS - start_x - 1);
+    }
+
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
+    }
+
+    y++;  // blank line
+    int l1x = (COLS - (int)strlen(loading1)) / 2;
+    if (l1x < 0) l1x = 0;
+    int l2x = (COLS - (int)strlen(loading2)) / 2;
+    if (l2x < 0) l2x = 0;
+
+    if (colors_available) {
+        wattron(main_win, A_BOLD);
+    }
+    mvwaddnstr(main_win, y++, l1x, loading1, COLS - l1x - 1);
+    if (colors_available) {
+        wattroff(main_win, A_BOLD);
+    }
+    mvwaddnstr(main_win, y, l2x, loading2, COLS - l2x - 1);
+
+    wrefresh(main_win);
+}
+
 // Format a number with a precision that keeps small prices legible.
 static void format_number(char *buf, size_t size, double num) {
     if (fabs(num) >= 1.0) {
