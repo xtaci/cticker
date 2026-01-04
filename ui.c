@@ -289,17 +289,14 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     }
 
     const int candle_stride = 2;  // 1 column for body + 1 column gap for readability
-    int candle_columns = chart_width / candle_stride;
-    if (candle_columns < 1) candle_columns = 1;
+    int max_columns = chart_width / candle_stride;
+    if (max_columns < 1) max_columns = 1;
+    int visible_points = count < max_columns ? count : max_columns;
+    int start_idx = count - visible_points;
+    if (start_idx < 0) start_idx = 0;
 
-    double step = (count > 1 && candle_columns > 1)
-        ? (double)(count - 1) / (double)(candle_columns - 1)
-        : 0.0;
-
-    for (int col = 0; col < candle_columns; col++) {
-        size_t idx = (size_t)(col * step + 0.5);
-        if (idx >= (size_t)count) idx = count - 1;
-        PricePoint *pt = &points[idx];
+    for (int col = 0; col < visible_points; col++) {
+        PricePoint *pt = &points[start_idx + col];
         int screen_x = chart_x + col * candle_stride;
 
         int high_y = price_to_row(pt->high, min_price, max_price, chart_height, chart_y);
@@ -337,23 +334,55 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         mvwaddch(main_win, axis_y, axis_width, ACS_PLUS);
         mvwaddch(main_win, axis_y, axis_width + chart_width - 1, ACS_RTEE);
 
-        // Time labels at start, middle, and end
-        char time_str[32];
-        time_t start_time = points[0].timestamp;
-        time_t mid_time = points[count / 2].timestamp;
-        time_t end_time = points[count - 1].timestamp;
+        // Time labels with arrows pointing to the exact candle column
         struct tm tm_buf;
+        char time_str[32];
+        int axis_left = axis_width;
+        int axis_right = axis_width + chart_width - 1;
+        int label_row = axis_y + 1;
 
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime_r(&start_time, &tm_buf));
-        mvwprintw(main_win, axis_y + 1, axis_width, "%s", time_str);
+        PricePoint *start_pt = &points[start_idx];
+        PricePoint *end_pt = &points[start_idx + visible_points - 1];
+        int mid_idx = start_idx + visible_points / 2;
+        if (mid_idx >= count) mid_idx = count - 1;
+        if (mid_idx < start_idx) mid_idx = start_idx;
+        PricePoint *mid_pt = &points[mid_idx];
 
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime_r(&mid_time, &tm_buf));
-        mvwprintw(main_win, axis_y + 1, axis_width + chart_width / 2 - (int)strlen(time_str) / 2, "%s", time_str);
+        struct AxisMarker {
+            PricePoint *point;
+            int column;
+        } markers[3] = {
+            { start_pt, 0 },
+            { mid_pt, mid_idx - start_idx },
+            { end_pt, visible_points - 1 }
+        };
 
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime_r(&end_time, &tm_buf));
-        int end_x = axis_width + chart_width - (int)strlen(time_str);
-        if (end_x < axis_width) end_x = axis_width;
-        mvwprintw(main_win, axis_y + 1, end_x, "%s", time_str);
+        for (int m = 0; m < 3; ++m) {
+            PricePoint *pt = markers[m].point;
+            if (!pt) continue;
+            int col = markers[m].column;
+            if (col < 0) col = 0;
+            if (col > visible_points - 1) col = visible_points - 1;
+
+            int arrow_x = chart_x + col * candle_stride;
+            if (arrow_x < axis_left) arrow_x = axis_left;
+            if (arrow_x > axis_right) arrow_x = axis_right;
+
+            time_t ts = (time_t)pt->timestamp;
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M",
+                     localtime_r(&ts, &tm_buf));
+            int label_len = (int)strlen(time_str);
+            int print_len = label_len;
+            if (print_len > chart_width) print_len = chart_width;
+            int label_x = arrow_x - print_len / 2;
+            if (label_x < axis_left) label_x = axis_left;
+            if (label_x + print_len > axis_left + chart_width) {
+                label_x = axis_left + chart_width - print_len;
+            }
+
+            mvwaddch(main_win, axis_y, arrow_x, ACS_UARROW);
+            mvwaddnstr(main_win, label_row, label_x, time_str, print_len);
+        }
     }
 
     PricePoint *last = &points[count - 1];
