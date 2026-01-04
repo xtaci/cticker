@@ -33,6 +33,8 @@ static void reset_price_history(void) {
     last_visible_count = 0;
 }
 
+// Render the price column cell with the appropriate color treatment for
+// direction, selection state, and the short-lived flash animation.
 static void draw_price_cell(int y, const char *price_str, bool daily_up,
                             bool row_selected, bool flash, bool flash_up) {
     if (!colors_available) {
@@ -54,6 +56,7 @@ static void draw_price_cell(int y, const char *price_str, bool daily_up,
     wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
 }
 
+// Render the 24h change column cell with the correct gain/loss palette.
 static void draw_change_cell(int y, const char *change_str, bool change_up,
                              bool row_selected) {
     if (!colors_available) {
@@ -69,6 +72,8 @@ static void draw_change_cell(int y, const char *change_str, bool change_up,
     wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
 }
 
+// Draw the floating info box in the top-right corner that mirrors the
+// currently selected candle values.
 static void draw_info_box(int x, int y, int width, int height,
                           const PricePoint *point) {
     if (!point || width < 10 || height < 6) {
@@ -126,7 +131,7 @@ static void draw_info_box(int x, int y, int width, int height,
     }
 }
 
-// Initialize UI
+// Initialize ncurses and prepare the root window plus color palette.
 void init_ui(void) {
     initscr();
     cbreak();
@@ -155,7 +160,7 @@ void init_ui(void) {
     reset_price_history();
 }
 
-// Cleanup UI
+// Tear down ncurses resources so the terminal is restored.
 void cleanup_ui(void) {
     if (main_win) {
         delwin(main_win);
@@ -163,7 +168,7 @@ void cleanup_ui(void) {
     endwin();
 }
 
-// Format large numbers with K, M, B suffixes
+// Format a number with a precision that keeps small prices legible.
 static void format_number(char *buf, size_t size, double num) {
     if (fabs(num) >= 1.0) {
         snprintf(buf, size, "%.2f", num);
@@ -172,6 +177,7 @@ static void format_number(char *buf, size_t size, double num) {
     }
 }
 
+// Translate an enum period into a user-facing label.
 static const char* period_label(Period period) {
     switch (period) {
         case PERIOD_1MIN: return "1 Minute";
@@ -185,6 +191,7 @@ static const char* period_label(Period period) {
     }
 }
 
+// Convert a price into a y-coordinate on the chart grid.
 static int price_to_row(double price, double min_price, double max_price,
                         int chart_height, int chart_y) {
     double range = max_price - min_price;
@@ -199,9 +206,11 @@ static int price_to_row(double price, double min_price, double max_price,
     return chart_y + chart_height - 1 - (int)(normalized * usable_height);
 }
 
-// Draw main screen with ticker board
+// Draw the ticker board listing all configured symbols along with their latest
+// price, change, and a transient flash for updated rows.
 void draw_main_screen(TickerData *tickers, int count, int selected) {
     werase(main_win);
+    // Track cells that need to be redrawn after the flash animation completes.
     typedef struct {
         int y;
         char price_text[32];
@@ -218,37 +227,37 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     }
     last_visible_count = count;
     
-    // Draw title
+    // Title bar communicates the app name.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
     mvwprintw(main_win, 0, 2, "CTicker - Cryptocurrency Price Board");
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
     
-    // Draw time
+    // Timestamp on the right keeps the board anchored in real time.
     time_t now = time(NULL);
     char time_str[64];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
     mvwprintw(main_win, 0, COLS - strlen(time_str) - 2, "%s", time_str);
     
-    // Draw header
+    // Column headers and a horizontal rule to separate the board.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
     mvwprintw(main_win, 2, 2, "%-15s %15s %15s", "Symbol", "Price", "Change 24h");
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
     mvwhline(main_win, 3, 2, ACS_HLINE, COLS - 4);
     
-    // Draw ticker data
+    // Draw each ticker row along with optional flash effects on price updates.
     for (int i = 0; i < count; i++) {
         int y = 4 + i;
         
-        // Highlight selected row
+        // Selected row is rendered inverted for easy navigation.
         if (i == selected) {
             wattron(main_win, COLOR_PAIR(COLOR_PAIR_SELECTED));
             mvwhline(main_win, y, 0, ' ', COLS);
         }
         
-        // Symbol
+        // Trading pair.
         mvwprintw(main_win, y, 2, "%-15s", tickers[i].symbol);
         
-        // Price
+        // Price column with color coded trend and optional flash on change.
         char price_str[32];
         format_number(price_str, sizeof(price_str), tickers[i].price);
         bool daily_up = tickers[i].change_24h >= 0.0;
@@ -272,7 +281,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
             last_prices[i] = tickers[i].price;
         }
         
-        // Change 24h
+        // 24h percentage change inherits the same palette logic.
         char change_str[32];
         snprintf(change_str, sizeof(change_str), "%+14.2f%%", tickers[i].change_24h);
         bool change_up = tickers[i].change_24h >= 0;
@@ -283,10 +292,12 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         }
     }
     
-    // Draw help text
+    // Interaction hint anchored to the footer.
     mvwprintw(main_win, LINES - 2, 2, "Keys: Up/Down Navigate | Enter: View Chart | q: Quit");
     
     wrefresh(main_win);
+    // Run the flash animation after the frame is painted so the color swap is
+    // visible without blocking the drawing loop for every row.
     if (colors_available && flash_count > 0) {
         napms(PRICE_FLASH_DURATION_MS);
         for (int i = 0; i < flash_count; ++i) {
@@ -298,7 +309,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     }
 }
 
-// Draw candlestick chart that fills the screen width
+// Draw the interactive candlestick chart along with axis labels, cursor, and
+// metadata for the currently selected candle.
 void draw_chart(const char *symbol, PricePoint *points, int count, Period period,
                 int selected_index) {
     werase(main_win);
@@ -314,6 +326,7 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     mvwprintw(main_win, 0, 2, "%s - %s Candlestick Chart", symbol, period_str);
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
 
+    // Compute min/max for scaling the y-axis.
     double min_price = points[0].low;
     double max_price = points[0].high;
     for (int i = 1; i < count; i++) {
@@ -325,6 +338,7 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         max_price += 1.0;
     }
 
+    // Chart occupies everything below the header row.
     int chart_y = 2;
     int chart_height = LINES - 6;
     if (chart_height < 4) chart_height = 4;
@@ -332,6 +346,8 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     int chart_x = axis_width + 2;
     int available_width = COLS - chart_x - 2;
     if (available_width < 1) available_width = 1;
+    // Reserve room for the candle detail box while ensuring the chart keeps
+    // at least one column of drawing space on narrow terminals.
     int info_gap = 2;
     int info_width = 28;
     if (info_width > available_width / 2) info_width = available_width / 2;
@@ -357,7 +373,7 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     // Draw Y-axis line first (within main window)
     mvwvline(main_win, chart_y, axis_width, ACS_VLINE, chart_height);
 
-    // Y-axis labels with tick marks
+    // Y-axis labels with tick marks every 25% of the range.
     for (int i = 0; i <= 4; i++) {
         double price = max_price - (price_range * i / 4.0);
         char price_str[16];
@@ -367,12 +383,14 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         mvwaddch(main_win, y, axis_width, ACS_PLUS);
     }
 
+    // Each candle consumes one column and one column of spacing for legibility.
     const int candle_stride = 2;  // 1 column for body + 1 column gap for readability
     int max_columns = chart_width / candle_stride;
     if (max_columns < 1) max_columns = 1;
     int visible_points = count < max_columns ? count : max_columns;
     if (visible_points < 1) visible_points = (count > 0) ? 1 : 0;
 
+    // Guard the selected index. Default to the newest candle.
     int selection_idx = (selected_index >= 0 && selected_index < count)
         ? selected_index
         : (count - 1);
@@ -396,6 +414,7 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         selected_column = selection_idx - start_idx;
     }
 
+    // Draw every visible candle using ASCII wick/body glyphs.
     for (int col = 0; col < visible_points; col++) {
         PricePoint *pt = &points[start_idx + col];
         int screen_x = chart_x + col * candle_stride;
@@ -432,6 +451,8 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     int chart_draw_width = visible_points * candle_stride;
     if (chart_draw_width < 1) chart_draw_width = chart_width;
 
+    // Overlay a vertical cursor line that frames the selected candle but does
+    // not obscure its wick/body glyphs.
     if (selected_point && selected_column >= 0) {
         int cross_x = chart_x + selected_column * candle_stride;
         int skip_top = price_to_row(selected_point->high, min_price, max_price,
@@ -512,6 +533,7 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         }
     }
 
+    // Draw the floating info box that summarizes the selected candle.
     if (info_width >= 10 && selected_point) {
         int max_info_height = LINES - 4 - info_y;
         if (max_info_height < info_height) info_height = max_info_height;
@@ -531,7 +553,7 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     wrefresh(main_win);
 }
 
-// Handle keyboard input
+// Proxy to wgetch so the UI layer can remain decoupled from ncurses details.
 int handle_input(void) {
     return wgetch(main_win);
 }
