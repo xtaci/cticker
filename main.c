@@ -43,12 +43,13 @@ SOFTWARE.
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <ncurses.h>
 #include "cticker.h"
 
 #define REFRESH_INTERVAL 5  // Refresh every 5 seconds
 
-static volatile int running = 1;
+static _Atomic bool running = true;
 static pthread_mutex_t data_mutex = PTHREAD_MUTEX_INITIALIZER;
 static TickerData *global_tickers = NULL;
 static int ticker_count = 0;
@@ -60,7 +61,7 @@ static int ticker_count = 0;
  */
 static void signal_handler(int signo) {
     if (signo == SIGINT || signo == SIGTERM) {
-        running = 0;
+        atomic_store_explicit(&running, false, memory_order_relaxed);
     }
 }
 
@@ -80,14 +81,14 @@ static void* fetch_data_thread(void *arg) {
     if (!scratch || !updated) {
         free(scratch);
         free(updated);
-        running = 0;
+        atomic_store_explicit(&running, false, memory_order_relaxed);
         return NULL;
     }
     
-    while (running) {
+    while (atomic_load_explicit(&running, memory_order_relaxed)) {
         memset(updated, 0, symbol_count * sizeof(bool));
         
-        for (int i = 0; i < symbol_count && running; i++) {
+        for (int i = 0; i < symbol_count && atomic_load_explicit(&running, memory_order_relaxed); i++) {
             if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
                 updated[i] = true;
             }
@@ -102,7 +103,7 @@ static void* fetch_data_thread(void *arg) {
         pthread_mutex_unlock(&data_mutex);
         
         /* Sleep for refresh interval, but wake up early if shutting down. */
-        for (int i = 0; i < REFRESH_INTERVAL && running; i++) {
+        for (int i = 0; i < REFRESH_INTERVAL && atomic_load_explicit(&running, memory_order_relaxed); i++) {
             sleep(1);
         }
     }
@@ -204,7 +205,7 @@ int main(int argc, char *argv[]) {
      *  - Price board: select symbol and open chart (Enter)
      *  - Chart view : left/right candle cursor, space changes interval
      */
-    while (running) {
+    while (atomic_load_explicit(&running, memory_order_relaxed)) {
         if (show_chart) {
             draw_chart(chart_symbol, chart_points, chart_count, current_period,
                        chart_cursor_idx);
@@ -295,7 +296,7 @@ int main(int argc, char *argv[]) {
                     break;
                 case 'q':
                 case 'Q':
-                    running = 0;
+                    atomic_store_explicit(&running, false, memory_order_relaxed);
                     break;
             }
         }
