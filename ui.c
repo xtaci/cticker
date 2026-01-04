@@ -23,6 +23,7 @@ static WINDOW *main_win = NULL;
 static bool colors_available = false;
 static double last_prices[MAX_SYMBOLS];
 static int last_visible_count = 0;
+static int price_board_scroll_offset = 0;
 
 static void format_number(char *buf, size_t size, double num);
 
@@ -31,6 +32,7 @@ static void reset_price_history(void) {
         last_prices[i] = NAN;
     }
     last_visible_count = 0;
+    price_board_scroll_offset = 0;
 }
 
 // Render the price column cell with the appropriate color treatment for
@@ -210,6 +212,39 @@ static int price_to_row(double price, double min_price, double max_price,
 // price, change, and a transient flash for updated rows.
 void draw_main_screen(TickerData *tickers, int count, int selected) {
     werase(main_win);
+    const int board_start_y = 4;
+    const int footer_reserved_rows = 2;  // Leave room for footer + safety buffer
+    int max_board_height = LINES - footer_reserved_rows - board_start_y;
+    if (max_board_height < 1) {
+        max_board_height = 1;
+    }
+    int visible_rows = max_board_height;
+
+    if (count <= 0) {
+        price_board_scroll_offset = 0;
+    } else {
+        if (selected < 0) {
+            selected = 0;
+        } else if (selected >= count) {
+            selected = count - 1;
+        }
+        int max_scroll = count - visible_rows;
+        if (max_scroll < 0) {
+            max_scroll = 0;
+        }
+        if (price_board_scroll_offset > max_scroll) {
+            price_board_scroll_offset = max_scroll;
+        }
+        if (selected < price_board_scroll_offset) {
+            price_board_scroll_offset = selected;
+        } else if (selected >= price_board_scroll_offset + visible_rows) {
+            price_board_scroll_offset = selected - visible_rows + 1;
+        }
+        if (price_board_scroll_offset < 0) {
+            price_board_scroll_offset = 0;
+        }
+    }
+
     // Track cells that need to be redrawn after the flash animation completes.
     typedef struct {
         int y;
@@ -246,7 +281,21 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     
     // Draw each ticker row along with optional flash effects on price updates.
     for (int i = 0; i < count; i++) {
-        int y = 4 + i;
+        double previous_price = (i < MAX_SYMBOLS) ? last_prices[i] : NAN;
+        bool had_previous = !isnan(previous_price);
+        bool price_went_up = !had_previous || tickers[i].price >= previous_price;
+        bool price_changed = had_previous && fabs(tickers[i].price - previous_price) > PRICE_CHANGE_EPSILON;
+        bool in_view = i >= price_board_scroll_offset &&
+                       i < price_board_scroll_offset + visible_rows;
+
+        if (!in_view) {
+            if (i < MAX_SYMBOLS) {
+                last_prices[i] = tickers[i].price;
+            }
+            continue;
+        }
+
+        int y = board_start_y + (i - price_board_scroll_offset);
         
         // Selected row is rendered inverted for easy navigation.
         if (i == selected) {
@@ -262,10 +311,6 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         format_number(price_str, sizeof(price_str), tickers[i].price);
         bool daily_up = tickers[i].change_24h >= 0.0;
         bool row_selected = (i == selected);
-        double previous_price = (i < MAX_SYMBOLS) ? last_prices[i] : NAN;
-        bool had_previous = !isnan(previous_price);
-        bool price_went_up = !had_previous || tickers[i].price >= previous_price;
-        bool price_changed = had_previous && fabs(tickers[i].price - previous_price) > PRICE_CHANGE_EPSILON;
         draw_price_cell(y, price_str, daily_up, row_selected, price_changed, price_went_up);
         if (colors_available && price_changed && flash_count < MAX_SYMBOLS) {
             flash_queue[flash_count].y = y;
@@ -293,7 +338,17 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     }
     
     // Interaction hint anchored to the footer.
-    mvwprintw(main_win, LINES - 2, 2, "Keys: Up/Down Navigate | Enter: View Chart | q: Quit");
+    bool can_scroll_up = price_board_scroll_offset > 0;
+    bool can_scroll_down = (price_board_scroll_offset + visible_rows) < count;
+    if (can_scroll_up) {
+        mvwaddch(main_win, board_start_y, 0, ACS_UARROW);
+    }
+    if (can_scroll_down) {
+        mvwaddch(main_win, board_start_y + visible_rows - 1, 0, ACS_DARROW);
+    }
+
+    mvwprintw(main_win, LINES - 2, 2,
+              "Keys: Up/Down Navigate/Scroll | Enter: View Chart | q: Quit");
     
     wrefresh(main_win);
     // Run the flash animation after the frame is painted so the color swap is
