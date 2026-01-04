@@ -2,7 +2,9 @@
 
 A Terminal User Interface (TUI) based cryptocurrency ticker written in pure C. CTicker connects to the Binance API to display real-time prices for your chosen trading pairs with beautiful ASCII charts.
 
-![CTicker Screenshot](https://via.placeholder.com/800x400.png?text=CTicker+Screenshot)
+<img width="1656" height="916" alt="image" src="https://github.com/user-attachments/assets/34d108b8-9042-43ea-aca1-33821acbac99" />
+
+<img width="1645" height="922" alt="image" src="https://github.com/user-attachments/assets/4f378c22-1d56-4c85-9366-687c8c2dcd7d" />
 
 ## Features
 
