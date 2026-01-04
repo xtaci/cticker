@@ -1,3 +1,40 @@
+/*
+MIT License
+
+Copyright (c) 2026 xtaci
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+/**
+ * @file api.c
+ * @brief Networking + JSON parsing for Binance endpoints.
+ *
+ * This module provides two high-level calls:
+ * - fetch_ticker_data(): latest price + 24h change for a symbol
+ * - fetch_historical_data(): OHLC candles for charting
+ *
+ * Ownership:
+ * - fetch_ticker_data() fills a caller-provided ::TickerData.
+ * - fetch_historical_data() allocates @p *points; caller must free(@p *points).
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,13 +47,20 @@
 #define BINANCE_TICKER_URL BINANCE_API_BASE "/api/v3/ticker/24hr?symbol=%s"
 #define BINANCE_KLINES_URL BINANCE_API_BASE "/api/v3/klines?symbol=%s&interval=%s&limit=%d"
 
-// Buffer for HTTP response
+/**
+ * @brief In-memory buffer for the HTTP response body.
+ *
+ * The libcurl write callback appends bytes into (data,size) using realloc().
+ */
 typedef struct {
     char *data;
     size_t size;
 } ResponseBuffer;
 
-// Callback for curl write
+/**
+ * @brief libcurl write callback.
+ * @return Number of bytes consumed; returning 0 tells libcurl to abort.
+ */
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     ResponseBuffer *mem = (ResponseBuffer *)userp;
@@ -34,7 +78,13 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
     return realsize;
 }
 
-// Fetch ticker data from Binance API
+/**
+ * @brief Fetch latest ticker data from Binance.
+ *
+ * Endpoint returns a JSON object with fields like:
+ * - lastPrice
+ * - priceChangePercent
+ */
 int fetch_ticker_data(const char *symbol, TickerData *data) {
     CURL *curl;
     CURLcode res;
@@ -51,6 +101,7 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    /* Keep UI responsive even on slow networks. */
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     
     res = curl_easy_perform(curl);
@@ -61,7 +112,7 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
         return -1;
     }
     
-    // Parse JSON response
+    /* Parse JSON response (expected to be an object). */
     json_error_t error;
     json_t *root = json_loads(response.data, 0, &error);
     free(response.data);
@@ -70,7 +121,7 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
         return -1;
     }
     
-    // Extract data
+    /* Extract data into the caller-owned output struct. */
     strcpy(data->symbol, symbol);
     
     json_t *price_json = json_object_get(root, "lastPrice");
@@ -90,7 +141,12 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
     return 0;
 }
 
-// Get interval string and limit for period
+/**
+ * @brief Convert UI period selection into Binance kline interval + request limit.
+ *
+ * Limit is chosen to keep charts informative while avoiding overly large
+ * responses (also keeps rendering and parsing fast).
+ */
 static void get_interval_params(Period period, const char **interval, int *limit) {
     switch (period) {
         case PERIOD_1MIN:
@@ -125,7 +181,16 @@ static void get_interval_params(Period period, const char **interval, int *limit
     }
 }
 
-// Fetch historical data from Binance API
+/**
+ * @brief Fetch historical kline data from Binance.
+ *
+ * The response is a JSON array of arrays. For each kline we read:
+ * - [0] open time (ms)
+ * - [1] open
+ * - [2] high
+ * - [3] low
+ * - [4] close
+ */
 int fetch_historical_data(const char *symbol, Period period, PricePoint **points, int *count) {
     CURL *curl;
     CURLcode res;
@@ -155,7 +220,7 @@ int fetch_historical_data(const char *symbol, Period period, PricePoint **points
         return -1;
     }
     
-    // Parse JSON response
+    /* Parse JSON response (expected to be an array). */
     json_error_t error;
     json_t *root = json_loads(response.data, 0, &error);
     free(response.data);
@@ -166,6 +231,10 @@ int fetch_historical_data(const char *symbol, Period period, PricePoint **points
     }
     
     size_t array_size = json_array_size(root);
+    /*
+     * Allocate the worst-case number of points; we may end up using fewer if
+     * some elements are malformed.
+     */
     *points = malloc(sizeof(PricePoint) * array_size);
     if (!*points) {
         json_decref(root);
@@ -187,6 +256,7 @@ int fetch_historical_data(const char *symbol, Period period, PricePoint **points
             json_is_string(high_price) && json_is_string(low_price) &&
             json_is_string(close_price)) {
             PricePoint *point = &(*points)[*count];
+            /* Binance timestamps are milliseconds; we store seconds. */
             point->timestamp = json_integer_value(timestamp) / 1000;
             point->open = atof(json_string_value(open_price));
             point->high = atof(json_string_value(high_price));

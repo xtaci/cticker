@@ -1,3 +1,32 @@
+/*
+MIT License
+
+Copyright (c) 2026 xtaci
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+/**
+ * @file ui.c
+ * @brief ncurses-based UI rendering and input handling.
+ */
+
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +52,17 @@ static WINDOW *main_win = NULL;
 static bool colors_available = false;
 static double last_prices[MAX_SYMBOLS];
 static int last_visible_count = 0;
+/**
+ * @brief Scroll offset (top index) for the main price board.
+ *
+ * The price board is treated as a viewport:
+ * - Header/title occupy fixed rows at the top.
+ * - Footer/help occupies fixed rows at the bottom.
+ * - The area in-between is a scrollable list of tickers.
+ *
+ * We store the scroll offset globally so it persists across frames.
+ * On every redraw we clamp/adjust it to keep the selected row visible.
+ */
 static int price_board_scroll_offset = 0;
 
 static void format_number(char *buf, size_t size, double num);
@@ -32,6 +72,7 @@ static void reset_price_history(void) {
         last_prices[i] = NAN;
     }
     last_visible_count = 0;
+    // Reset scroll to top when the UI is initialized.
     price_board_scroll_offset = 0;
 }
 
@@ -140,7 +181,9 @@ void init_ui(void) {
     noecho();
     keypad(stdscr, TRUE);
     curs_set(0);
-    timeout(1000);  // Non-blocking getch with 1 second timeout
+    // Use a 1s input timeout so the main loop can redraw periodically even
+    // without user interaction (prices update in the background thread).
+    timeout(1000);
     
     // Initialize colors
     colors_available = has_colors();
@@ -158,6 +201,8 @@ void init_ui(void) {
     
     main_win = newwin(LINES, COLS, 0, 0);
     keypad(main_win, TRUE);
+    // Mirror the input timeout on the main window so handle_input() uses the
+    // same cadence regardless of which window is active.
     wtimeout(main_win, 1000);
     reset_price_history();
 }
@@ -212,15 +257,31 @@ static int price_to_row(double price, double min_price, double max_price,
 // price, change, and a transient flash for updated rows.
 void draw_main_screen(TickerData *tickers, int count, int selected) {
     werase(main_win);
+    // Layout (screen coordinates):
+    //   row 0: title + timestamp
+    //   row 2: column headers
+    //   row 3: separator line
+    //   row 4..N: scrollable ticker list (this is the viewport)
+    //   last rows: footer/help text
+    //
+    // IMPORTANT:
+    // The ticker list MUST NOT render over the footer. Therefore we compute
+    // the maximum list height dynamically from the current terminal size.
     const int board_start_y = 4;
-    const int footer_reserved_rows = 2;  // Leave room for footer + safety buffer
+    const int footer_reserved_rows = 2;  // Footer/help row + safety buffer
     int max_board_height = LINES - footer_reserved_rows - board_start_y;
     if (max_board_height < 1) {
         max_board_height = 1;
     }
     int visible_rows = max_board_height;
 
+    // Compute and clamp the viewport window (price_board_scroll_offset .. + visible_rows).
+    // Policy:
+    //   - Clamp selected index within [0, count-1].
+    //   - Clamp scroll offset within [0, count-visible_rows].
+    //   - Adjust scroll offset so the selected row is always visible.
     if (count <= 0) {
+        // No rows; keep state consistent.
         price_board_scroll_offset = 0;
     } else {
         if (selected < 0) {
@@ -232,9 +293,13 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         if (max_scroll < 0) {
             max_scroll = 0;
         }
+        // Ensure the offset is within the legal scrolling range.
         if (price_board_scroll_offset > max_scroll) {
             price_board_scroll_offset = max_scroll;
         }
+        // Keep selection visible:
+        // - If selection is above the viewport, scroll up to it.
+        // - If selection is below the viewport, scroll down until it's the last visible row.
         if (selected < price_board_scroll_offset) {
             price_board_scroll_offset = selected;
         } else if (selected >= price_board_scroll_offset + visible_rows) {
@@ -280,6 +345,10 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     mvwhline(main_win, 3, 2, ACS_HLINE, COLS - 4);
     
     // Draw each ticker row along with optional flash effects on price updates.
+    //
+    // NOTE: Even if a row is currently outside the viewport, we still update
+    // last_prices[i]. This keeps the price-change detection correct when the
+    // user scrolls and the row becomes visible again.
     for (int i = 0; i < count; i++) {
         double previous_price = (i < MAX_SYMBOLS) ? last_prices[i] : NAN;
         bool had_previous = !isnan(previous_price);
@@ -289,12 +358,14 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
                        i < price_board_scroll_offset + visible_rows;
 
         if (!in_view) {
+            // Off-screen: update history only, then skip drawing.
             if (i < MAX_SYMBOLS) {
                 last_prices[i] = tickers[i].price;
             }
             continue;
         }
 
+        // Translate model index -> screen row within viewport.
         int y = board_start_y + (i - price_board_scroll_offset);
         
         // Selected row is rendered inverted for easy navigation.
@@ -338,6 +409,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     }
     
     // Interaction hint anchored to the footer.
+    // Scroll indicators: show arrows when there are hidden rows above/below.
+    // These are placed at column 0 to avoid colliding with the content columns.
     bool can_scroll_up = price_board_scroll_offset > 0;
     bool can_scroll_down = (price_board_scroll_offset + visible_rows) < count;
     if (can_scroll_up) {
