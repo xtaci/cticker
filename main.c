@@ -67,11 +67,12 @@ int main(int argc, char *argv[]) {
     
     Config config;
     int selected = 0;
-    Period current_period = PERIOD_1HOUR;
+    Period current_period = PERIOD_1MIN;
     bool show_chart = false;
     char chart_symbol[MAX_SYMBOL_LEN] = {0};
     PricePoint *chart_points = NULL;
     int chart_count = 0;
+    int chart_cursor_idx = -1;
     pthread_t fetch_thread;
     
     // Setup signal handler
@@ -118,7 +119,8 @@ int main(int argc, char *argv[]) {
     // Main loop
     while (running) {
         if (show_chart) {
-            draw_chart(chart_symbol, chart_points, chart_count, current_period);
+            draw_chart(chart_symbol, chart_points, chart_count, current_period,
+                       chart_cursor_idx);
         } else {
             pthread_mutex_lock(&data_mutex);
             TickerData *tickers_copy = malloc(ticker_count * sizeof(TickerData));
@@ -137,20 +139,32 @@ int main(int argc, char *argv[]) {
         
         if (show_chart) {
             switch (ch) {
-                case KEY_LEFT:
-                    current_period = (current_period == PERIOD_1MIN)
-                        ? (Period)(PERIOD_COUNT - 1)
-                        : (Period)(current_period - 1);
+                case ' ':
+                    current_period = (Period)((current_period + 1) % PERIOD_COUNT);
                     if (reload_chart_data(chart_symbol, current_period,
-                                          &chart_points, &chart_count) != 0) {
+                                          &chart_points, &chart_count) == 0) {
+                        if (chart_count > 0) {
+                            if (chart_cursor_idx >= chart_count) {
+                                chart_cursor_idx = chart_count - 1;
+                            }
+                            if (chart_cursor_idx < 0) {
+                                chart_cursor_idx = chart_count - 1;
+                            }
+                        } else {
+                            chart_cursor_idx = -1;
+                        }
+                    } else {
                         beep();
                     }
                     break;
+                case KEY_LEFT:
+                    if (chart_cursor_idx > 0) {
+                        chart_cursor_idx--;
+                    }
+                    break;
                 case KEY_RIGHT:
-                    current_period = (Period)((current_period + 1) % PERIOD_COUNT);
-                    if (reload_chart_data(chart_symbol, current_period,
-                                          &chart_points, &chart_count) != 0) {
-                        beep();
+                    if (chart_cursor_idx >= 0 && chart_cursor_idx < chart_count - 1) {
+                        chart_cursor_idx++;
                     }
                     break;
                 case 'q':
@@ -162,6 +176,7 @@ int main(int argc, char *argv[]) {
                         chart_points = NULL;
                         chart_count = 0;
                     }
+                    chart_cursor_idx = -1;
                     break;
             }
         } else {
@@ -183,6 +198,7 @@ int main(int argc, char *argv[]) {
                     if (reload_chart_data(chart_symbol, current_period,
                                            &chart_points, &chart_count) == 0) {
                         show_chart = true;
+                        chart_cursor_idx = (chart_count > 0) ? (chart_count - 1) : -1;
                     } else {
                         beep();
                     }

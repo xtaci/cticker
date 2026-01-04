@@ -24,6 +24,8 @@ static bool colors_available = false;
 static double last_prices[MAX_SYMBOLS];
 static int last_visible_count = 0;
 
+static void format_number(char *buf, size_t size, double num);
+
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
         last_prices[i] = NAN;
@@ -65,6 +67,63 @@ static void draw_change_cell(int y, const char *change_str, bool change_up,
     wattron(main_win, COLOR_PAIR(pair) | A_BOLD);
     mvwprintw(main_win, y, CHANGE_COL, "%s", change_str);
     wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
+}
+
+static void draw_info_box(int x, int y, int width, int height,
+                          const PricePoint *point) {
+    if (!point || width < 10 || height < 6) {
+        return;
+    }
+
+    int right = x + width - 1;
+    int bottom = y + height - 1;
+
+    mvwaddch(main_win, y, x, ACS_ULCORNER);
+    mvwaddch(main_win, y, right, ACS_URCORNER);
+    mvwaddch(main_win, bottom, x, ACS_LLCORNER);
+    mvwaddch(main_win, bottom, right, ACS_LRCORNER);
+    mvwhline(main_win, y, x + 1, ACS_HLINE, width - 2);
+    mvwhline(main_win, bottom, x + 1, ACS_HLINE, width - 2);
+    mvwvline(main_win, y + 1, x, ACS_VLINE, height - 2);
+    mvwvline(main_win, y + 1, right, ACS_VLINE, height - 2);
+
+    char open_str[16], high_str[16], low_str[16], close_str[16];
+    format_number(open_str, sizeof(open_str), point->open);
+    format_number(high_str, sizeof(high_str), point->high);
+    format_number(low_str, sizeof(low_str), point->low);
+    format_number(close_str, sizeof(close_str), point->close);
+
+    double change = (point->open != 0.0)
+        ? ((point->close - point->open) / point->open) * 100.0
+        : 0.0;
+    char change_str[16];
+    snprintf(change_str, sizeof(change_str), "%+.2f%%", change);
+
+    time_t ts = (time_t)point->timestamp;
+    struct tm tm_buf;
+    char time_str[32];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M",
+             localtime_r(&ts, &tm_buf));
+
+    int content_x = x + 2;
+    int line = y + 1;
+    mvwprintw(main_win, line++, content_x, "Time : %s", time_str);
+    mvwprintw(main_win, line++, content_x, "Open : %s", open_str);
+    mvwprintw(main_win, line++, content_x, "High : %s", high_str);
+    mvwprintw(main_win, line++, content_x, "Low  : %s", low_str);
+    mvwprintw(main_win, line,   content_x, "Close: %s", close_str);
+    line++;
+
+    if (colors_available) {
+        int color = (point->close >= point->open)
+            ? COLOR_PAIR(COLOR_PAIR_GREEN)
+            : COLOR_PAIR(COLOR_PAIR_RED);
+        wattron(main_win, color | A_BOLD);
+        mvwprintw(main_win, line, content_x, "Change: %s", change_str);
+        wattroff(main_win, color | A_BOLD);
+    } else {
+        mvwprintw(main_win, line, content_x, "Change: %s", change_str);
+    }
 }
 
 // Initialize UI
@@ -240,7 +299,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
 }
 
 // Draw candlestick chart that fills the screen width
-void draw_chart(const char *symbol, PricePoint *points, int count, Period period) {
+void draw_chart(const char *symbol, PricePoint *points, int count, Period period,
+                int selected_index) {
     werase(main_win);
 
     if (count == 0) {
@@ -270,8 +330,27 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     if (chart_height < 4) chart_height = 4;
     int axis_width = 12;
     int chart_x = axis_width + 2;
-    int chart_width = COLS - chart_x - 2;
+    int available_width = COLS - chart_x - 2;
+    if (available_width < 1) available_width = 1;
+    int info_gap = 2;
+    int info_width = 28;
+    if (info_width > available_width / 2) info_width = available_width / 2;
+    if (info_width < 18) info_width = 18;
+    if (info_width > available_width - info_gap - 1) {
+        info_width = available_width - info_gap - 1;
+    }
+    if (info_width < 18) {
+        info_width = (available_width > 18) ? 18 : available_width / 2;
+    }
+    if (info_width < 10) {
+        info_width = 0;
+        info_gap = 0;
+    }
+    int chart_width = available_width - info_width - info_gap;
     if (chart_width < 1) chart_width = 1;
+    int info_x = chart_x + chart_width + info_gap;
+    int info_y = 1;
+    int info_height = 8;
 
     double price_range = max_price - min_price;
 
@@ -292,8 +371,30 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
     int max_columns = chart_width / candle_stride;
     if (max_columns < 1) max_columns = 1;
     int visible_points = count < max_columns ? count : max_columns;
-    int start_idx = count - visible_points;
-    if (start_idx < 0) start_idx = 0;
+    if (visible_points < 1) visible_points = (count > 0) ? 1 : 0;
+
+    int selection_idx = (selected_index >= 0 && selected_index < count)
+        ? selected_index
+        : (count - 1);
+    if (selection_idx < 0) selection_idx = 0;
+
+    int start_idx = 0;
+    if (visible_points < count) {
+        start_idx = count - visible_points;
+        if (selection_idx < start_idx) {
+            start_idx = selection_idx;
+        } else if (selection_idx >= start_idx + visible_points) {
+            start_idx = selection_idx - visible_points + 1;
+        }
+        int max_start = count - visible_points;
+        if (start_idx > max_start) start_idx = max_start;
+        if (start_idx < 0) start_idx = 0;
+    }
+
+    int selected_column = -1;
+    if (selection_idx >= start_idx && selection_idx < start_idx + visible_points) {
+        selected_column = selection_idx - start_idx;
+    }
 
     for (int col = 0; col < visible_points; col++) {
         PricePoint *pt = &points[start_idx + col];
@@ -325,6 +426,32 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         }
 
         wattroff(main_win, color_pair);
+    }
+
+    PricePoint *selected_point = (count > 0) ? &points[selection_idx] : NULL;
+    int chart_draw_width = visible_points * candle_stride;
+    if (chart_draw_width < 1) chart_draw_width = chart_width;
+
+    if (selected_point && selected_column >= 0) {
+        int cross_x = chart_x + selected_column * candle_stride;
+        int skip_top = price_to_row(selected_point->high, min_price, max_price,
+                                    chart_height, chart_y);
+        int skip_bottom = price_to_row(selected_point->low, min_price, max_price,
+                                       chart_height, chart_y);
+        if (skip_top > skip_bottom) {
+            int tmp = skip_top;
+            skip_top = skip_bottom;
+            skip_bottom = tmp;
+        }
+
+        wattron(main_win, A_DIM);
+        for (int y = chart_y; y < chart_y + chart_height; ++y) {
+            if (y >= skip_top && y <= skip_bottom) {
+                continue;
+            }
+            mvwaddch(main_win, y, cross_x, ACS_VLINE);
+        }
+        wattroff(main_win, A_DIM);
     }
 
     // X-axis at the bottom of the chart
@@ -385,24 +512,21 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         }
     }
 
-    PricePoint *last = &points[count - 1];
-    char open_str[16], high_str[16], low_str[16], close_str[16], change_str[16];
-    format_number(open_str, sizeof(open_str), last->open);
-    format_number(high_str, sizeof(high_str), last->high);
-    format_number(low_str, sizeof(low_str), last->low);
-    format_number(close_str, sizeof(close_str), last->close);
+    if (info_width >= 10 && selected_point) {
+        int max_info_height = LINES - 4 - info_y;
+        if (max_info_height < info_height) info_height = max_info_height;
+        if (info_height < 8) info_height = 8;
+        if (info_height >= 8) {
+            if (info_x + info_width >= COLS) {
+                info_x = COLS - info_width - 1;
+            }
+            draw_info_box(info_x, info_y, info_width, info_height, selected_point);
+        }
+    }
 
-    double change = ((last->close - last->open) / last->open) * 100.0;
-    snprintf(change_str, sizeof(change_str), "%+.2f%%", change);
-
-    mvwprintw(main_win, LINES - 5, 2, "O:%s H:%s L:%s C:%s", open_str, high_str, low_str, close_str);
-    int color = change >= 0 ? COLOR_PAIR(COLOR_PAIR_GREEN) : COLOR_PAIR(COLOR_PAIR_RED);
-    wattron(main_win, color);
-    mvwprintw(main_win, LINES - 4, 2, "Change: %s", change_str);
-    wattroff(main_win, color);
-
-    mvwprintw(main_win, LINES - 3, 2, "Interval: %s (Left/Right to change)", period_str);
-    mvwprintw(main_win, LINES - 2, 2, "Keys: Left/Right Interval | ESC/q: Back");
+    mvwprintw(main_win, LINES - 3, 2, "Interval: %s (Space to cycle)", period_str);
+    mvwprintw(main_win, LINES - 2, 2,
+              "Keys: Left/Right Move Cursor | Space Next Interval | ESC/q: Back");
 
     wrefresh(main_win);
 }

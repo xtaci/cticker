@@ -57,7 +57,8 @@ int fetch_historical_data(const char *symbol, Period period, PricePoint **points
 void init_ui(void);
 void cleanup_ui(void);
 void draw_main_screen(TickerData *tickers, int count, int selected);
-void draw_chart(const char *symbol, PricePoint *points, int count, Period period);
+void draw_chart(const char *symbol, PricePoint *points, int count, Period period,
+                int selected_index);
 int handle_input(void);
 
 #endif // CTICKER_H
