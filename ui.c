@@ -175,12 +175,17 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
 
     double price_range = max_price - min_price;
 
-    // Y-axis labels
+    // Draw Y-axis line first (within main window)
+    mvwvline(main_win, chart_y, axis_width, ACS_VLINE, chart_height);
+
+    // Y-axis labels with tick marks
     for (int i = 0; i <= 4; i++) {
         double price = max_price - (price_range * i / 4.0);
         char price_str[16];
         format_number(price_str, sizeof(price_str), price);
-        mvwprintw(main_win, chart_y + (chart_height * i / 4), 2, "%10s", price_str);
+        int y = chart_y + (chart_height * i / 4);
+        mvwprintw(main_win, y, 2, "%10s", price_str);
+        mvwaddch(main_win, y, axis_width, ACS_PLUS);
     }
 
     const int candle_stride = 2;  // 1 column for body + 1 column gap for readability
@@ -223,6 +228,32 @@ void draw_chart(const char *symbol, PricePoint *points, int count, Period period
         }
 
         wattroff(main_win, color_pair);
+    }
+
+    // X-axis at the bottom of the chart
+    int axis_y = chart_y + chart_height;
+    if (axis_y < LINES - 3) {
+        mvwhline(main_win, axis_y, axis_width, ACS_HLINE, chart_width);
+        mvwaddch(main_win, axis_y, axis_width, ACS_PLUS);
+        mvwaddch(main_win, axis_y, axis_width + chart_width - 1, ACS_RTEE);
+
+        // Time labels at start, middle, and end
+        char time_str[32];
+        time_t start_time = points[0].timestamp;
+        time_t mid_time = points[count / 2].timestamp;
+        time_t end_time = points[count - 1].timestamp;
+        struct tm tm_buf;
+
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime_r(&start_time, &tm_buf));
+        mvwprintw(main_win, axis_y + 1, axis_width, "%s", time_str);
+
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime_r(&mid_time, &tm_buf));
+        mvwprintw(main_win, axis_y + 1, axis_width + chart_width / 2 - (int)strlen(time_str) / 2, "%s", time_str);
+
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime_r(&end_time, &tm_buf));
+        int end_x = axis_width + chart_width - (int)strlen(time_str);
+        if (end_x < axis_width) end_x = axis_width;
+        mvwprintw(main_win, axis_y + 1, end_x, "%s", time_str);
     }
 
     PricePoint *last = &points[count - 1];
