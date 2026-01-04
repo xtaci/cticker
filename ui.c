@@ -9,8 +9,63 @@
 #define COLOR_PAIR_RED 2
 #define COLOR_PAIR_HEADER 3
 #define COLOR_PAIR_SELECTED 4
+#define COLOR_PAIR_GREEN_BG 5
+#define COLOR_PAIR_RED_BG 6
+#define COLOR_PAIR_GREEN_SELECTED 7
+#define COLOR_PAIR_RED_SELECTED 8
+
+#define PRICE_FLASH_DURATION_MS 500
+#define PRICE_CHANGE_EPSILON 1e-9
+#define PRICE_COL 18
+#define CHANGE_COL 35
 
 static WINDOW *main_win = NULL;
+static bool colors_available = false;
+static double last_prices[MAX_SYMBOLS];
+static int last_visible_count = 0;
+
+static void reset_price_history(void) {
+    for (int i = 0; i < MAX_SYMBOLS; ++i) {
+        last_prices[i] = NAN;
+    }
+    last_visible_count = 0;
+}
+
+static void draw_price_cell(int y, const char *price_str, bool daily_up,
+                            bool row_selected, bool flash, bool flash_up) {
+    if (!colors_available) {
+        mvwprintw(main_win, y, PRICE_COL, "%15s", price_str);
+        return;
+    }
+
+    int pair;
+    if (flash) {
+        pair = flash_up ? COLOR_PAIR_GREEN_BG : COLOR_PAIR_RED_BG;
+    } else if (row_selected) {
+        pair = daily_up ? COLOR_PAIR_GREEN_SELECTED : COLOR_PAIR_RED_SELECTED;
+    } else {
+        pair = daily_up ? COLOR_PAIR_GREEN : COLOR_PAIR_RED;
+    }
+
+    wattron(main_win, COLOR_PAIR(pair) | A_BOLD);
+    mvwprintw(main_win, y, PRICE_COL, "%15s", price_str);
+    wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
+}
+
+static void draw_change_cell(int y, const char *change_str, bool change_up,
+                             bool row_selected) {
+    if (!colors_available) {
+        mvwprintw(main_win, y, CHANGE_COL, "%s", change_str);
+        return;
+    }
+
+    int pair = row_selected
+        ? (change_up ? COLOR_PAIR_GREEN_SELECTED : COLOR_PAIR_RED_SELECTED)
+        : (change_up ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
+    wattron(main_win, COLOR_PAIR(pair) | A_BOLD);
+    mvwprintw(main_win, y, CHANGE_COL, "%s", change_str);
+    wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
+}
 
 // Initialize UI
 void init_ui(void) {
@@ -22,17 +77,23 @@ void init_ui(void) {
     timeout(1000);  // Non-blocking getch with 1 second timeout
     
     // Initialize colors
-    if (has_colors()) {
+    colors_available = has_colors();
+    if (colors_available) {
         start_color();
         init_pair(COLOR_PAIR_GREEN, COLOR_GREEN, COLOR_BLACK);
         init_pair(COLOR_PAIR_RED, COLOR_RED, COLOR_BLACK);
         init_pair(COLOR_PAIR_HEADER, COLOR_CYAN, COLOR_BLACK);
         init_pair(COLOR_PAIR_SELECTED, COLOR_BLACK, COLOR_WHITE);
+        init_pair(COLOR_PAIR_GREEN_BG, COLOR_BLACK, COLOR_GREEN);
+        init_pair(COLOR_PAIR_RED_BG, COLOR_BLACK, COLOR_RED);
+        init_pair(COLOR_PAIR_GREEN_SELECTED, COLOR_GREEN, COLOR_WHITE);
+        init_pair(COLOR_PAIR_RED_SELECTED, COLOR_RED, COLOR_WHITE);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
     keypad(main_win, TRUE);
     wtimeout(main_win, 1000);
+    reset_price_history();
 }
 
 // Cleanup UI
@@ -82,6 +143,21 @@ static int price_to_row(double price, double min_price, double max_price,
 // Draw main screen with ticker board
 void draw_main_screen(TickerData *tickers, int count, int selected) {
     werase(main_win);
+    typedef struct {
+        int y;
+        char price_text[32];
+        bool daily_up;
+        bool row_selected;
+        bool price_went_up;
+    } PriceFlashInfo;
+    PriceFlashInfo flash_queue[MAX_SYMBOLS];
+    int flash_count = 0;
+    if (count < last_visible_count) {
+        for (int i = count; i < last_visible_count && i < MAX_SYMBOLS; ++i) {
+            last_prices[i] = NAN;
+        }
+    }
+    last_visible_count = count;
     
     // Draw title
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
@@ -116,17 +192,32 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         // Price
         char price_str[32];
         format_number(price_str, sizeof(price_str), tickers[i].price);
-        mvwprintw(main_win, y, 18, "%15s", price_str);
+        bool daily_up = tickers[i].change_24h >= 0.0;
+        bool row_selected = (i == selected);
+        double previous_price = (i < MAX_SYMBOLS) ? last_prices[i] : NAN;
+        bool had_previous = !isnan(previous_price);
+        bool price_went_up = !had_previous || tickers[i].price >= previous_price;
+        bool price_changed = had_previous && fabs(tickers[i].price - previous_price) > PRICE_CHANGE_EPSILON;
+        draw_price_cell(y, price_str, daily_up, row_selected, price_changed, price_went_up);
+        if (colors_available && price_changed && flash_count < MAX_SYMBOLS) {
+            flash_queue[flash_count].y = y;
+            snprintf(flash_queue[flash_count].price_text,
+                     sizeof(flash_queue[flash_count].price_text), "%s",
+                     price_str);
+            flash_queue[flash_count].daily_up = daily_up;
+            flash_queue[flash_count].row_selected = row_selected;
+            flash_queue[flash_count].price_went_up = price_went_up;
+            flash_count++;
+        }
+        if (i < MAX_SYMBOLS) {
+            last_prices[i] = tickers[i].price;
+        }
         
         // Change 24h
-        int color = tickers[i].change_24h >= 0 ? COLOR_PAIR_GREEN : COLOR_PAIR_RED;
-        if (i != selected) {
-            wattron(main_win, COLOR_PAIR(color));
-        }
-        mvwprintw(main_win, y, 35, "%+14.2f%%", tickers[i].change_24h);
-        if (i != selected) {
-            wattroff(main_win, COLOR_PAIR(color));
-        }
+        char change_str[32];
+        snprintf(change_str, sizeof(change_str), "%+14.2f%%", tickers[i].change_24h);
+        bool change_up = tickers[i].change_24h >= 0;
+        draw_change_cell(y, change_str, change_up, row_selected);
         
         if (i == selected) {
             wattroff(main_win, COLOR_PAIR(COLOR_PAIR_SELECTED));
@@ -137,6 +228,15 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     mvwprintw(main_win, LINES - 2, 2, "Keys: Up/Down Navigate | Enter: View Chart | q: Quit");
     
     wrefresh(main_win);
+    if (colors_available && flash_count > 0) {
+        napms(PRICE_FLASH_DURATION_MS);
+        for (int i = 0; i < flash_count; ++i) {
+            draw_price_cell(flash_queue[i].y, flash_queue[i].price_text,
+                            flash_queue[i].daily_up, flash_queue[i].row_selected,
+                            false, flash_queue[i].price_went_up);
+        }
+        wrefresh(main_win);
+    }
 }
 
 // Draw candlestick chart that fills the screen width
