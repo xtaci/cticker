@@ -136,6 +136,238 @@ static int reload_chart_data(const char *symbol, Period period,
 }
 
 /**
+ * @brief Register signal handlers for graceful shutdown.
+ */
+static void setup_signal_handlers(void) {
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+}
+
+/**
+ * @brief Perform a synchronous fetch so the first paint has data.
+ *
+ * Copies directly into the shared ticker buffer under lock.
+ */
+static int perform_initial_fetch(const Config *config) {
+    pthread_mutex_lock(&data_mutex);
+    for (int i = 0; i < config->symbol_count; i++) {
+        fetch_ticker_data(config->symbols[i], &global_tickers[i]);
+    }
+    pthread_mutex_unlock(&data_mutex);
+    return 0;
+}
+
+/**
+ * @brief Initialize config, UI, shared buffers, and start the fetch thread.
+ *
+ * @return 0 on success, -1 on failure.
+ */
+static int init_runtime(Config *config, pthread_t *fetch_thread) {
+    if (load_config(config) != 0) {
+        fprintf(stderr, "Failed to load configuration\n");
+        return -1;
+    }
+
+    if (config->symbol_count == 0) {
+        fprintf(stderr, "No symbols configured\n");
+        return -1;
+    }
+
+    ticker_count = config->symbol_count;
+    global_tickers = calloc(ticker_count, sizeof(TickerData));
+    if (!global_tickers) {
+        fprintf(stderr, "Failed to allocate memory\n");
+        return -1;
+    }
+
+    init_ui();
+    draw_splash_screen();
+
+    if (pthread_create(fetch_thread, NULL, fetch_data_thread, config) != 0) {
+        cleanup_ui();
+        free(global_tickers);
+        fprintf(stderr, "Failed to create fetch thread\n");
+        return -1;
+    }
+
+    perform_initial_fetch(config);
+    return 0;
+}
+
+/**
+ * @brief Stop the worker thread and release UI/resources.
+ */
+static void shutdown_runtime(pthread_t fetch_thread, PricePoint *chart_points) {
+    pthread_join(fetch_thread, NULL);
+    if (chart_points) {
+        free(chart_points);
+    }
+    cleanup_ui();
+    free(global_tickers);
+}
+
+/**
+ * @brief Draw the price board using a snapshot of shared tickers.
+ */
+static void render_price_board(int selected) {
+    pthread_mutex_lock(&data_mutex);
+    TickerData *tickers_copy = malloc(ticker_count * sizeof(TickerData));
+    if (tickers_copy) {
+        memcpy(tickers_copy, global_tickers, ticker_count * sizeof(TickerData));
+    }
+    pthread_mutex_unlock(&data_mutex);
+
+    if (tickers_copy) {
+        draw_main_screen(tickers_copy, ticker_count, selected);
+        free(tickers_copy);
+    }
+}
+
+/**
+ * @brief Load chart data for the selected symbol and prepare initial cursor.
+ *
+ * @return true on success (chart ready), false on failure.
+ */
+static bool open_chart_for_selection(int selected, Period current_period,
+                                     PricePoint **chart_points, int *chart_count,
+                                     char *chart_symbol, int *chart_cursor_idx) {
+    pthread_mutex_lock(&data_mutex);
+    strcpy(chart_symbol, global_tickers[selected].symbol);
+    pthread_mutex_unlock(&data_mutex);
+
+    if (reload_chart_data(chart_symbol, current_period, chart_points, chart_count) == 0) {
+        *chart_cursor_idx = (*chart_count > 0) ? (*chart_count - 1) : -1;
+        return true;
+    }
+
+    beep();
+    return false;
+}
+
+/**
+ * @brief Release chart buffers and reset chart view indices.
+ */
+static void reset_chart_state(PricePoint **chart_points, int *chart_count, int *chart_cursor_idx) {
+    if (*chart_points) {
+        free(*chart_points);
+        *chart_points = NULL;
+    }
+    *chart_count = 0;
+    *chart_cursor_idx = -1;
+}
+
+/**
+ * @brief Handle key input while in chart mode.
+ */
+static void handle_chart_input(int ch, char *chart_symbol, Period *current_period,
+                               PricePoint **chart_points, int *chart_count,
+                               int *chart_cursor_idx, bool *show_chart) {
+    switch (ch) {
+        case ' ': {
+            *current_period = (Period)((*current_period + 1) % PERIOD_COUNT);
+            if (reload_chart_data(chart_symbol, *current_period, chart_points, chart_count) == 0) {
+                if (*chart_count > 0) {
+                    if (*chart_cursor_idx >= *chart_count) {
+                        *chart_cursor_idx = *chart_count - 1;
+                    }
+                    if (*chart_cursor_idx < 0) {
+                        *chart_cursor_idx = *chart_count - 1;
+                    }
+                } else {
+                    *chart_cursor_idx = -1;
+                }
+            } else {
+                beep();
+            }
+            break;
+        }
+        case KEY_LEFT:
+            if (*chart_cursor_idx > 0) {
+                (*chart_cursor_idx)--;
+            }
+            break;
+        case KEY_RIGHT:
+            if (*chart_cursor_idx >= 0 && *chart_cursor_idx < *chart_count - 1) {
+                (*chart_cursor_idx)++;
+            }
+            break;
+        case 'q':
+        case 'Q':
+        case 27:  // ESC
+            *show_chart = false;
+            reset_chart_state(chart_points, chart_count, chart_cursor_idx);
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * @brief Handle key input while on the price board.
+ */
+static void handle_price_board_input(int ch, int *selected, Period current_period,
+                                     bool *show_chart, PricePoint **chart_points,
+                                     int *chart_count, char *chart_symbol,
+                                     int *chart_cursor_idx) {
+    switch (ch) {
+        case KEY_UP:
+            if (*selected > 0) {
+                (*selected)--;
+            }
+            break;
+        case KEY_DOWN:
+            if (*selected < ticker_count - 1) {
+                (*selected)++;
+            }
+            break;
+        case '\n':
+        case '\r':
+        case KEY_ENTER:
+            if (open_chart_for_selection(*selected, current_period, chart_points, chart_count,
+                                          chart_symbol, chart_cursor_idx)) {
+                *show_chart = true;
+            }
+            break;
+        case 'q':
+        case 'Q':
+            atomic_store_explicit(&running, false, memory_order_relaxed);
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * @brief Main UI loop dispatching draw/input for board vs chart.
+ */
+static void run_event_loop(Period *current_period, bool *show_chart, int *selected,
+                           char *chart_symbol, PricePoint **chart_points,
+                           int *chart_count, int *chart_cursor_idx) {
+    while (atomic_load_explicit(&running, memory_order_relaxed)) {
+        if (*show_chart) {
+            draw_chart(chart_symbol, *chart_points, *chart_count, *current_period,
+                       *chart_cursor_idx);
+        } else {
+            render_price_board(*selected);
+        }
+
+        int ch = handle_input();
+        if (ch == ERR) {
+            continue;
+        }
+
+        if (*show_chart) {
+            handle_chart_input(ch, chart_symbol, current_period, chart_points,
+                               chart_count, chart_cursor_idx, show_chart);
+        } else {
+            handle_price_board_input(ch, selected, *current_period, show_chart,
+                                     chart_points, chart_count, chart_symbol,
+                                     chart_cursor_idx);
+        }
+    }
+}
+
+/**
  * @brief Program entry point.
  *
  * Sets up config, starts the worker thread, then runs the UI state machine.
@@ -153,164 +385,22 @@ int main(int argc, char *argv[]) {
     int chart_count = 0;
     int chart_cursor_idx = -1;
     pthread_t fetch_thread;
-    
-    /* Setup signal handlers. */
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-    
-    /* Load configuration (symbols list). */
-    if (load_config(&config) != 0) {
-        fprintf(stderr, "Failed to load configuration\n");
-        return 1;
-    }
-    
-    if (config.symbol_count == 0) {
-        fprintf(stderr, "No symbols configured\n");
-        return 1;
-    }
-    
-    /* Allocate the shared ticker array used by both the worker and UI. */
-    ticker_count = config.symbol_count;
-    global_tickers = calloc(ticker_count, sizeof(TickerData));
-    if (!global_tickers) {
-        fprintf(stderr, "Failed to allocate memory\n");
-        return 1;
-    }
-    
-    /* Initialize UI (ncurses). From this point, exit via cleanup_ui(). */
-    init_ui();
 
-    // Show a splash screen while the first batch of data is being fetched.
-    // This avoids a blank (black) screen on slow networks.
-    draw_splash_screen();
-    
-    /* Start data fetching thread. */
-    if (pthread_create(&fetch_thread, NULL, fetch_data_thread, &config) != 0) {
-        cleanup_ui();
-        free(global_tickers);
-        fprintf(stderr, "Failed to create fetch thread\n");
+    setup_signal_handlers();
+
+    if (init_runtime(&config, &fetch_thread) != 0) {
         return 1;
     }
-    
-    /* Initial data fetch so the board isn't empty on first paint. */
-    pthread_mutex_lock(&data_mutex);
-    for (int i = 0; i < config.symbol_count; i++) {
-        fetch_ticker_data(config.symbols[i], &global_tickers[i]);
-    }
-    pthread_mutex_unlock(&data_mutex);
-    
+
     /*
      * Main loop.
      * Two UI modes:
      *  - Price board: select symbol and open chart (Enter)
      *  - Chart view : left/right candle cursor, space changes interval
      */
-    while (atomic_load_explicit(&running, memory_order_relaxed)) {
-        if (show_chart) {
-            draw_chart(chart_symbol, chart_points, chart_count, current_period,
-                       chart_cursor_idx);
-        } else {
-            pthread_mutex_lock(&data_mutex);
-            TickerData *tickers_copy = malloc(ticker_count * sizeof(TickerData));
-            if (tickers_copy) {
-                /* Copy under lock, then draw without holding the mutex. */
-                memcpy(tickers_copy, global_tickers, ticker_count * sizeof(TickerData));
-                pthread_mutex_unlock(&data_mutex);
-                
-                draw_main_screen(tickers_copy, ticker_count, selected);
-                free(tickers_copy);
-            } else {
-                pthread_mutex_unlock(&data_mutex);
-            }
-        }
-        
-        int ch = handle_input();
-        
-        if (show_chart) {
-            switch (ch) {
-                case ' ':
-                    /* Cycle chart interval and reload candles. */
-                    current_period = (Period)((current_period + 1) % PERIOD_COUNT);
-                    if (reload_chart_data(chart_symbol, current_period,
-                                          &chart_points, &chart_count) == 0) {
-                        if (chart_count > 0) {
-                            if (chart_cursor_idx >= chart_count) {
-                                chart_cursor_idx = chart_count - 1;
-                            }
-                            if (chart_cursor_idx < 0) {
-                                chart_cursor_idx = chart_count - 1;
-                            }
-                        } else {
-                            chart_cursor_idx = -1;
-                        }
-                    } else {
-                        beep();
-                    }
-                    break;
-                case KEY_LEFT:
-                    if (chart_cursor_idx > 0) {
-                        chart_cursor_idx--;
-                    }
-                    break;
-                case KEY_RIGHT:
-                    if (chart_cursor_idx >= 0 && chart_cursor_idx < chart_count - 1) {
-                        chart_cursor_idx++;
-                    }
-                    break;
-                case 'q':
-                case 'Q':
-                case 27:  // ESC
-                    /* Back to price board. */
-                    show_chart = false;
-                    if (chart_points) {
-                        free(chart_points);
-                        chart_points = NULL;
-                        chart_count = 0;
-                    }
-                    chart_cursor_idx = -1;
-                    break;
-            }
-        } else {
-            switch (ch) {
-                case KEY_UP:
-                    if (selected > 0) selected--;
-                    break;
-                case KEY_DOWN:
-                    if (selected < ticker_count - 1) selected++;
-                    break;
-                case '\n':
-                case '\r':
-                case KEY_ENTER:
-                    /* Fetch historical data and show chart for the selected symbol. */
-                    pthread_mutex_lock(&data_mutex);
-                    strcpy(chart_symbol, global_tickers[selected].symbol);
-                    pthread_mutex_unlock(&data_mutex);
-                    
-                    if (reload_chart_data(chart_symbol, current_period,
-                                           &chart_points, &chart_count) == 0) {
-                        show_chart = true;
-                        chart_cursor_idx = (chart_count > 0) ? (chart_count - 1) : -1;
-                    } else {
-                        beep();
-                    }
-                    break;
-                case 'q':
-                case 'Q':
-                    atomic_store_explicit(&running, false, memory_order_relaxed);
-                    break;
-            }
-        }
-    }
-    
-    /* Cleanup: stop worker, release chart buffer, restore terminal. */
-    pthread_join(fetch_thread, NULL);
-    
-    if (chart_points) {
-        free(chart_points);
-    }
-    
-    cleanup_ui();
-    free(global_tickers);
-    
+    run_event_loop(&current_period, &show_chart, &selected, chart_symbol,
+                   &chart_points, &chart_count, &chart_cursor_idx);
+
+    shutdown_runtime(fetch_thread, chart_points);
     return 0;
 }
