@@ -72,14 +72,33 @@ static void signal_handler(int signo) {
  */
 static void* fetch_data_thread(void *arg) {
     Config *config = (Config *)arg;
+    int symbol_count = config->symbol_count;
+
+    /* Fetch into a scratch buffer, then copy under lock to keep UI responsive. */
+    TickerData *scratch = calloc(symbol_count, sizeof(TickerData));
+    bool *updated = calloc(symbol_count, sizeof(bool));
+    if (!scratch || !updated) {
+        free(scratch);
+        free(updated);
+        running = 0;
+        return NULL;
+    }
     
     while (running) {
-        pthread_mutex_lock(&data_mutex);
+        memset(updated, 0, symbol_count * sizeof(bool));
         
-        for (int i = 0; i < config->symbol_count; i++) {
-            fetch_ticker_data(config->symbols[i], &global_tickers[i]);
+        for (int i = 0; i < symbol_count && running; i++) {
+            if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
+                updated[i] = true;
+            }
         }
-        
+
+        pthread_mutex_lock(&data_mutex);
+        for (int i = 0; i < symbol_count; i++) {
+            if (updated[i]) {
+                global_tickers[i] = scratch[i];
+            }
+        }
         pthread_mutex_unlock(&data_mutex);
         
         /* Sleep for refresh interval, but wake up early if shutting down. */
@@ -88,6 +107,8 @@ static void* fetch_data_thread(void *arg) {
         }
     }
     
+    free(scratch);
+    free(updated);
     return NULL;
 }
 
