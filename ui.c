@@ -583,16 +583,40 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     }
     last_visible_count = count;
     
-    // Title bar communicates the app name.
-    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "CTICKER >> [P][R][I][C][E] [B][O][A][R][D]");
-    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
-    
-    // Timestamp on the right keeps the board anchored in real time.
+    // Unified title bar header keeps left label, centered board name, and right clock visually cohesive.
     time_t now = time(NULL);
     char time_str[64];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
-    mvwprintw(main_win, 0, COLS - strlen(time_str) - 2, "%s", time_str);
+    const char *left_text = "CTICKER";
+    const char *title_text = "[P][R][I][C][E] [B][O][A][R][D]";
+    int left_x = 2;
+    int left_len = (int)strlen(left_text);
+    int title_len = (int)strlen(title_text);
+    int time_x = COLS - (int)strlen(time_str) - 2;
+    if (time_x < 2) {
+        time_x = 2;
+    }
+    int title_x = (COLS - title_len) / 2;
+    if (title_x < 2) {
+        title_x = 2;
+    }
+    int min_title_x = left_x + left_len + 2;
+    if (title_x < min_title_x) {
+        title_x = min_title_x;
+    }
+    if (title_x + title_len >= time_x) {
+        title_x = time_x - title_len - 1;
+        if (title_x < 2) {
+            title_x = 2;
+        }
+    }
+
+    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
+    mvwhline(main_win, 0, 0, ' ', COLS);
+    mvwprintw(main_win, 0, left_x, "%s", left_text);
+    mvwprintw(main_win, 0, title_x, "%s", title_text);
+    mvwprintw(main_win, 0, time_x, "%s", time_str);
+    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
     
     // Column headers and a horizontal rule to separate the board.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
