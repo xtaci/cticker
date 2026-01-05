@@ -514,8 +514,9 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     if (colors_available && flicker_count > 0) {
         napms(PRICE_FLICKER_DURATION_MS);
         for (int i = 0; i < flicker_count; ++i) {
+            // After the flicker window, hide the arrow and revert to normal colors.
             draw_price_cell(flicker_queue[i].y, flicker_queue[i].price_text,
-                            flicker_queue[i].arrow, flicker_queue[i].daily_up,
+                            ' ', flicker_queue[i].daily_up,
                             flicker_queue[i].row_selected, false,
                             flicker_queue[i].price_went_up);
         }
