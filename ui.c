@@ -596,7 +596,9 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     
     // Column headers and a horizontal rule to separate the board.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
-    mvwprintw(main_win, 2, 2, "%-15s %15s %15s", "SYMBOL", "PRICE", "CHANGE 24H");
+    mvwprintw(main_win, 2, 2, "%-15s", "SYMBOL");
+    mvwprintw(main_win, 2, PRICE_COL, "%15s", "PRICE");
+    mvwprintw(main_win, 2, CHANGE_COL, "%15s", "CHANGE 24H");
     if (show_high) {
         mvwprintw(main_win, 2, HIGH_COL, "%12s", "HIGH");
     }
