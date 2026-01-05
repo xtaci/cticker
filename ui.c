@@ -599,6 +599,21 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
 
     double price_range = max_price - min_price;
 
+    // Draw faint grid lines inside the chart area for better price context.
+    if (chart_width > 2 && chart_height > 2) {
+        int grid_divisions = 4;
+        wattron(main_win, A_DIM);
+        for (int i = 1; i < grid_divisions; ++i) {
+            int y = chart_y + (chart_height * i / grid_divisions);
+            mvwhline(main_win, y, chart_x, ACS_HLINE, chart_width);
+        }
+        for (int i = 1; i < grid_divisions; ++i) {
+            int x = chart_x + (chart_width * i / grid_divisions);
+            mvwvline(main_win, chart_y, x, ACS_VLINE, chart_height);
+        }
+        wattroff(main_win, A_DIM);
+    }
+
     // Draw Y-axis line first (within main window)
     mvwvline(main_win, chart_y, axis_width, ACS_VLINE, chart_height);
 
