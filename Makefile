@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2 -pthread
-LDFLAGS = -lcurl -ljansson -lncurses -lm -lpthread
+LDFLAGS = -lcurl -ljansson -lncursesw -lm -lpthread
 
 TARGET = cticker
 SOURCES = main.c config.c api.c ui.c
@@ -28,5 +28,5 @@ check-deps:
 	@which pkg-config > /dev/null || (echo "pkg-config not found" && exit 1)
 	@pkg-config --exists libcurl || (echo "libcurl not found" && exit 1)
 	@pkg-config --exists jansson || (echo "jansson not found" && exit 1)
-	@pkg-config --exists ncurses || (echo "ncurses not found" && exit 1)
+	@pkg-config --exists ncursesw || (echo "ncursesw not found" && exit 1)
 	@echo "All dependencies are installed"

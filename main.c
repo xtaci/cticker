@@ -44,7 +44,7 @@ SOFTWARE.
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
-#include <ncurses.h>
+#include <ncursesw/ncurses.h>
 #include "cticker.h"
 
 #define REFRESH_INTERVAL 5  // Refresh every 5 seconds

@@ -27,7 +27,7 @@ SOFTWARE.
  * @brief ncurses-based UI rendering and input handling.
  */
 
-#include <ncurses.h>
+#include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
