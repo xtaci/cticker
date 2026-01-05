@@ -43,6 +43,8 @@ SOFTWARE.
 #define COLOR_PAIR_RED_BG 6
 #define COLOR_PAIR_GREEN_SELECTED 7
 #define COLOR_PAIR_RED_SELECTED 8
+#define COLOR_PAIR_SYMBOL 9
+#define COLOR_PAIR_SYMBOL_SELECTED 10
 
 #define PRICE_FLICKER_DURATION_MS 500
 #define PRICE_CHANGE_EPSILON 1e-9
@@ -194,14 +196,17 @@ void init_ui(void) {
     colors_available = has_colors();
     if (colors_available) {
         start_color();
+        short selection_bg = COLOR_BLUE;
         init_pair(COLOR_PAIR_GREEN, COLOR_GREEN, COLOR_BLACK);
         init_pair(COLOR_PAIR_RED, COLOR_RED, COLOR_BLACK);
         init_pair(COLOR_PAIR_HEADER, COLOR_CYAN, COLOR_BLACK);
-        init_pair(COLOR_PAIR_SELECTED, COLOR_BLACK, COLOR_WHITE);
+        init_pair(COLOR_PAIR_SELECTED, COLOR_BLACK, selection_bg);
         init_pair(COLOR_PAIR_GREEN_BG, COLOR_BLACK, COLOR_GREEN);
         init_pair(COLOR_PAIR_RED_BG, COLOR_BLACK, COLOR_RED);
-        init_pair(COLOR_PAIR_GREEN_SELECTED, COLOR_GREEN, COLOR_WHITE);
-        init_pair(COLOR_PAIR_RED_SELECTED, COLOR_RED, COLOR_WHITE);
+        init_pair(COLOR_PAIR_GREEN_SELECTED, COLOR_GREEN, selection_bg);
+        init_pair(COLOR_PAIR_RED_SELECTED, COLOR_RED, selection_bg);
+        init_pair(COLOR_PAIR_SYMBOL, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(COLOR_PAIR_SYMBOL_SELECTED, COLOR_YELLOW, selection_bg);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
@@ -454,14 +459,23 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
             mvwhline(main_win, y, 0, ' ', COLS);
         }
         
-        // Trading pair.
-        mvwprintw(main_win, y, 2, "%-15s", tickers[i].symbol);
+        // Determine selection before coloring symbol/price.
+        bool row_selected = (i == selected);
+
+        // Trading pair in yellow; keep contrast when selected.
+        if (colors_available) {
+            int sym_pair = row_selected ? COLOR_PAIR_SYMBOL_SELECTED : COLOR_PAIR_SYMBOL;
+            wattron(main_win, COLOR_PAIR(sym_pair) | A_BOLD);
+            mvwprintw(main_win, y, 2, "%-15s", tickers[i].symbol);
+            wattroff(main_win, COLOR_PAIR(sym_pair) | A_BOLD);
+        } else {
+            mvwprintw(main_win, y, 2, "%-15s", tickers[i].symbol);
+        }
         
         // Price column with color coded trend and optional flicker on change.
         char price_str[32];
         format_number(price_str, sizeof(price_str), tickers[i].price);
         bool daily_up = tickers[i].change_24h >= 0.0;
-        bool row_selected = (i == selected);
         chtype price_arrow = (price_changed
             ? (price_went_up ? ACS_UARROW : ACS_DARROW)
             : ' ');
