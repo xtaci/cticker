@@ -546,7 +546,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     
     // Title bar communicates the app name.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "CTicker - Cryptocurrency Price Board");
+    mvwprintw(main_win, 0, 2, "CTICKER - CRYPTOCURRENCY PRICE BOARD");
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
     
     // Timestamp on the right keeps the board anchored in real time.
