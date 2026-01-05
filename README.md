@@ -230,6 +230,5 @@ This software is for informational purposes only. Cryptocurrency trading carries
 
 ## Credits
 
-- Developed by the CTicker team
 - Uses data from Binance API
 - Built with ncursesw, libcurl, and jansson

@@ -27,7 +27,6 @@ The main screen displays a real-time price board with the following layout:
   - Green text for positive changes (+)
   - Red text for negative changes (-)
 - **Real-time Updates**: Prices refresh automatically every 5 seconds
-- **Large Number Formatting**: Numbers displayed with K/M/B suffixes (e.g., 1.2M, 3.4B)
 
 ### Controls:
 - `↑` (Up Arrow): Move selection up
@@ -75,16 +74,6 @@ When you press Enter on a symbol, you see the price chart:
 - `7`: Switch to 1-week chart (1-hour intervals, 168 data points)
 - `30` or `3` + `0`: Switch to 1-month chart (4-hour intervals, 180 data points)
 - `ESC` or `q`: Return to main screen
-
-## Color Scheme
-
-The application uses ANSI colors for a rich visual experience:
-
-- **Cyan**: Headers and titles
-- **Green**: Positive price changes and upward movements
-- **Red**: Negative price changes and downward movements
-- **White on Black**: Normal text
-- **Black on White**: Selected items
 
 ## Terminal Requirements
 
