@@ -74,6 +74,8 @@ typedef struct {
     double low;
     /** Close price for the interval. */
     double close;
+    /** Base asset volume traded during the interval. */
+    double volume;
 } PricePoint;
 
 /**

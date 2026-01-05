@@ -190,6 +190,7 @@ static void get_interval_params(Period period, const char **interval, int *limit
  * - [2] high
  * - [3] low
  * - [4] close
+ * - [5] volume
  */
 int fetch_historical_data(const char *restrict symbol, Period period,
                           PricePoint **restrict points, int *restrict count) {
@@ -252,10 +253,11 @@ int fetch_historical_data(const char *restrict symbol, Period period,
         json_t *high_price = json_array_get(kline, 2);
         json_t *low_price = json_array_get(kline, 3);
         json_t *close_price = json_array_get(kline, 4);
+        json_t *volume = json_array_get(kline, 5);
         
         if (json_is_integer(timestamp) && json_is_string(open_price) &&
             json_is_string(high_price) && json_is_string(low_price) &&
-            json_is_string(close_price)) {
+            json_is_string(close_price) && json_is_string(volume)) {
             PricePoint *point = &(*points)[*count];
             /* Binance timestamps are milliseconds; we store seconds. */
             point->timestamp = json_integer_value(timestamp) / 1000;
@@ -263,6 +265,7 @@ int fetch_historical_data(const char *restrict symbol, Period period,
             point->high = atof(json_string_value(high_price));
             point->low = atof(json_string_value(low_price));
             point->close = atof(json_string_value(close_price));
+            point->volume = atof(json_string_value(volume));
             (*count)++;
         }
     }

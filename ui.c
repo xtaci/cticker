@@ -141,11 +141,12 @@ static void draw_info_box(int x, int y, int width, int height,
     mvwvline(main_win, y + 1, x, ACS_VLINE, height - 2);
     mvwvline(main_win, y + 1, right, ACS_VLINE, height - 2);
 
-    char open_str[16], high_str[16], low_str[16], close_str[16];
+    char open_str[16], high_str[16], low_str[16], close_str[16], volume_str[16];
     format_number(open_str, sizeof(open_str), point->open);
     format_number(high_str, sizeof(high_str), point->high);
     format_number(low_str, sizeof(low_str), point->low);
     format_number(close_str, sizeof(close_str), point->close);
+    format_number(volume_str, sizeof(volume_str), point->volume);
 
     double change = (point->open != 0.0)
         ? ((point->close - point->open) / point->open) * 100.0
@@ -165,8 +166,8 @@ static void draw_info_box(int x, int y, int width, int height,
     mvwprintw(main_win, line++, content_x, "Open : %s", open_str);
     mvwprintw(main_win, line++, content_x, "High : %s", high_str);
     mvwprintw(main_win, line++, content_x, "Low  : %s", low_str);
-    mvwprintw(main_win, line,   content_x, "Close: %s", close_str);
-    line++;
+    mvwprintw(main_win, line++, content_x, "Close: %s", close_str);
+    mvwprintw(main_win, line++, content_x, "Vol  : %s", volume_str);
 
     if (colors_available) {
         int color = (point->close >= point->open)
@@ -595,7 +596,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     if (chart_width < 1) chart_width = 1;
     int info_x = chart_x + chart_width + info_gap;
     int info_y = 1;
-    int info_height = 8;
+    int info_height = 9;
 
     double price_range = max_price - min_price;
 
@@ -781,8 +782,9 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     if (info_width >= 10 && selected_point) {
         int max_info_height = LINES - 4 - info_y;
         if (max_info_height < info_height) info_height = max_info_height;
-        if (info_height < 8) info_height = 8;
-        if (info_height >= 8) {
+        const int min_info_height = 9;
+        if (info_height < min_info_height) info_height = min_info_height;
+        if (info_height >= min_info_height) {
             if (info_x + info_width >= COLS) {
                 info_x = COLS - info_width - 1;
             }
