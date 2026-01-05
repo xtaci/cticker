@@ -21,14 +21,14 @@ CTicker requires the following libraries:
 
 - `libcurl` - For HTTP requests to Binance API
 - `libjansson` - For JSON parsing
-- `ncurses` - For the terminal user interface
+- `ncursesw` - Wide-character terminal UI library
 - `pthread` - For multi-threading (usually included with gcc)
 
 ### Installing Dependencies
 
 **Ubuntu/Debian:**
 ```bash
-sudo apt-get install libcurl4-openssl-dev libjansson-dev libncurses5-dev build-essential
+sudo apt-get install libcurl4-openssl-dev libjansson-dev libncursesw5-dev build-essential
 ```
 
 **Fedora/RHEL/CentOS:**
@@ -45,6 +45,8 @@ brew install curl jansson ncurses
 ```bash
 sudo pacman -S curl jansson ncurses
 ```
+
+> **Note:** Use the wide-character `ncursesw` libraries. On Debian/Ubuntu this is provided by `libncursesw5-dev`, while `ncurses-devel` (Fedora), `ncurses` (Homebrew), and `ncurses` (Arch) already include wide-character support.
 
 ## Building
 
@@ -167,7 +169,7 @@ Press `Enter` on any trading pair to view its price chart:
 ## Technical Details
 
 - Written in pure C for performance and efficiency
-- Uses ncurses for terminal UI rendering
+- Uses ncursesw for terminal UI rendering
 - Multi-threaded design for non-blocking UI
 - Connects to Binance REST API v3
 - Auto-refreshes data every 5 seconds
@@ -230,4 +232,4 @@ This software is for informational purposes only. Cryptocurrency trading carries
 
 - Developed by the CTicker team
 - Uses data from Binance API
-- Built with ncurses, libcurl, and jansson
+- Built with ncursesw, libcurl, and jansson
