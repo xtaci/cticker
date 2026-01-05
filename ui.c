@@ -603,11 +603,11 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
 
         char number_buf[32];
         if (show_high) {
-            format_number_with_commas(number_buf, sizeof(number_buf), tickers[i].high_price);
+            format_number(number_buf, sizeof(number_buf), tickers[i].high_price);
             mvwprintw(main_win, y, HIGH_COL, "%12s", number_buf);
         }
         if (show_low) {
-            format_number_with_commas(number_buf, sizeof(number_buf), tickers[i].low_price);
+            format_number(number_buf, sizeof(number_buf), tickers[i].low_price);
             mvwprintw(main_win, y, LOW_COL, "%12s", number_buf);
         }
         if (show_volume) {
