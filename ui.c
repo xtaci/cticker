@@ -141,12 +141,17 @@ static void draw_info_box(int x, int y, int width, int height,
     mvwvline(main_win, y + 1, x, ACS_VLINE, height - 2);
     mvwvline(main_win, y + 1, right, ACS_VLINE, height - 2);
 
-    char open_str[16], high_str[16], low_str[16], close_str[16], volume_str[16];
+    char open_str[16], high_str[16], low_str[16], close_str[16];
+    char volume_str[16], quote_volume_str[16];
+    char taker_buy_base_str[16], taker_buy_quote_str[16];
     format_number(open_str, sizeof(open_str), point->open);
     format_number(high_str, sizeof(high_str), point->high);
     format_number(low_str, sizeof(low_str), point->low);
     format_number(close_str, sizeof(close_str), point->close);
     format_number(volume_str, sizeof(volume_str), point->volume);
+    format_number(quote_volume_str, sizeof(quote_volume_str), point->quote_volume);
+    format_number(taker_buy_base_str, sizeof(taker_buy_base_str), point->taker_buy_base_volume);
+    format_number(taker_buy_quote_str, sizeof(taker_buy_quote_str), point->taker_buy_quote_volume);
 
     double change = (point->open != 0.0)
         ? ((point->close - point->open) / point->open) * 100.0
@@ -156,18 +161,27 @@ static void draw_info_box(int x, int y, int width, int height,
 
     time_t ts = (time_t)point->timestamp;
     struct tm tm_buf;
-    char time_str[32];
-    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M",
+    char open_time_str[32];
+    strftime(open_time_str, sizeof(open_time_str), "%Y-%m-%d %H:%M",
              localtime_r(&ts, &tm_buf));
+    time_t close_ts = (time_t)point->close_time;
+    char close_time_str[32];
+    strftime(close_time_str, sizeof(close_time_str), "%Y-%m-%d %H:%M",
+             localtime_r(&close_ts, &tm_buf));
 
     int content_x = x + 2;
     int line = y + 1;
-    mvwprintw(main_win, line++, content_x, "Time : %s", time_str);
+    mvwprintw(main_win, line++, content_x, "Open Time : %s", open_time_str);
+    mvwprintw(main_win, line++, content_x, "Close Time: %s", close_time_str);
     mvwprintw(main_win, line++, content_x, "Open : %s", open_str);
     mvwprintw(main_win, line++, content_x, "High : %s", high_str);
     mvwprintw(main_win, line++, content_x, "Low  : %s", low_str);
     mvwprintw(main_win, line++, content_x, "Close: %s", close_str);
     mvwprintw(main_win, line++, content_x, "Vol  : %s", volume_str);
+    mvwprintw(main_win, line++, content_x, "Quote Vol: %s", quote_volume_str);
+    mvwprintw(main_win, line++, content_x, "Trades   : %d", point->trade_count);
+    mvwprintw(main_win, line++, content_x, "Taker Buy (B): %s", taker_buy_base_str);
+    mvwprintw(main_win, line++, content_x, "Taker Buy (Q): %s", taker_buy_quote_str);
 
     if (colors_available) {
         int color = (point->close >= point->open)
@@ -579,14 +593,19 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     // Reserve room for the candle detail box while ensuring the chart keeps
     // at least one column of drawing space on narrow terminals.
     int info_gap = 2;
-    int info_width = 28;
-    if (info_width > available_width / 2) info_width = available_width / 2;
-    if (info_width < 18) info_width = 18;
+    const int preferred_info_width = 36;
+    const int min_info_width = 22;
+    int info_width = preferred_info_width;
+    int max_width_share = (available_width * 2) / 3;  // keep majority for chart.
+    if (info_width > max_width_share) info_width = max_width_share;
+    if (info_width < min_info_width) info_width = min_info_width;
     if (info_width > available_width - info_gap - 1) {
         info_width = available_width - info_gap - 1;
     }
-    if (info_width < 18) {
-        info_width = (available_width > 18) ? 18 : available_width / 2;
+    if (info_width < min_info_width) {
+        info_width = (available_width > min_info_width)
+            ? min_info_width
+            : available_width / 2;
     }
     if (info_width < 10) {
         info_width = 0;
@@ -596,7 +615,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     if (chart_width < 1) chart_width = 1;
     int info_x = chart_x + chart_width + info_gap;
     int info_y = 1;
-    int info_height = 9;
+    int info_height = 14;
 
     double price_range = max_price - min_price;
 
@@ -782,7 +801,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     if (info_width >= 10 && selected_point) {
         int max_info_height = LINES - 4 - info_y;
         if (max_info_height < info_height) info_height = max_info_height;
-        const int min_info_height = 9;
+        const int min_info_height = 14;
         if (info_height < min_info_height) info_height = min_info_height;
         if (info_height >= min_info_height) {
             if (info_x + info_width >= COLS) {

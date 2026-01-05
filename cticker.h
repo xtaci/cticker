@@ -66,6 +66,8 @@ typedef struct {
 typedef struct {
     /** Candle open time in seconds since Unix epoch. */
     uint64_t timestamp;
+    /** Candle close time in seconds since Unix epoch. */
+    uint64_t close_time;
     /** Open price for the interval. */
     double open;
     /** High price for the interval. */
@@ -76,6 +78,14 @@ typedef struct {
     double close;
     /** Base asset volume traded during the interval. */
     double volume;
+    /** Quote asset volume traded during the interval. */
+    double quote_volume;
+    /** Number of trades recorded during the interval. */
+    int trade_count;
+    /** Taker buy volume measured in base asset units. */
+    double taker_buy_base_volume;
+    /** Taker buy volume measured in quote asset units. */
+    double taker_buy_quote_volume;
 } PricePoint;
 
 /**

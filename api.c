@@ -191,6 +191,11 @@ static void get_interval_params(Period period, const char **interval, int *limit
  * - [3] low
  * - [4] close
  * - [5] volume
+ * - [6] close time (ms)
+ * - [7] quote asset volume
+ * - [8] number of trades
+ * - [9] taker buy base asset volume
+ * - [10] taker buy quote asset volume
  */
 int fetch_historical_data(const char *restrict symbol, Period period,
                           PricePoint **restrict points, int *restrict count) {
@@ -254,18 +259,31 @@ int fetch_historical_data(const char *restrict symbol, Period period,
         json_t *low_price = json_array_get(kline, 3);
         json_t *close_price = json_array_get(kline, 4);
         json_t *volume = json_array_get(kline, 5);
+        json_t *close_time = json_array_get(kline, 6);
+        json_t *quote_volume = json_array_get(kline, 7);
+        json_t *trade_count = json_array_get(kline, 8);
+        json_t *taker_buy_base = json_array_get(kline, 9);
+        json_t *taker_buy_quote = json_array_get(kline, 10);
         
         if (json_is_integer(timestamp) && json_is_string(open_price) &&
             json_is_string(high_price) && json_is_string(low_price) &&
-            json_is_string(close_price) && json_is_string(volume)) {
+            json_is_string(close_price) && json_is_string(volume) &&
+            json_is_integer(close_time) && json_is_string(quote_volume) &&
+            json_is_integer(trade_count) && json_is_string(taker_buy_base) &&
+            json_is_string(taker_buy_quote)) {
             PricePoint *point = &(*points)[*count];
             /* Binance timestamps are milliseconds; we store seconds. */
             point->timestamp = json_integer_value(timestamp) / 1000;
+            point->close_time = json_integer_value(close_time) / 1000;
             point->open = atof(json_string_value(open_price));
             point->high = atof(json_string_value(high_price));
             point->low = atof(json_string_value(low_price));
             point->close = atof(json_string_value(close_price));
             point->volume = atof(json_string_value(volume));
+            point->quote_volume = atof(json_string_value(quote_volume));
+            point->trade_count = (int)json_integer_value(trade_count);
+            point->taker_buy_base_volume = atof(json_string_value(taker_buy_base));
+            point->taker_buy_quote_volume = atof(json_string_value(taker_buy_quote));
             (*count)++;
         }
     }
