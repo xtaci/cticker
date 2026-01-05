@@ -251,7 +251,7 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_RED_SELECTED, COLOR_RED, selection_bg);
         init_pair(COLOR_PAIR_SYMBOL, COLOR_YELLOW, COLOR_BLACK);
         init_pair(COLOR_PAIR_SYMBOL_SELECTED, COLOR_YELLOW, selection_bg);
-        init_pair(COLOR_PAIR_TITLE_BAR, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(COLOR_PAIR_TITLE_BAR, COLOR_BLACK, COLOR_WHITE);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
@@ -548,7 +548,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     
     // Title bar communicates the app name.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "CTICKER >> PRICE BOARD");
+    mvwprintw(main_win, 0, 2, "CTICKER >> [P][R][I][C][E] [B][O][A][R][D]");
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
     
     // Timestamp on the right keeps the board anchored in real time.
