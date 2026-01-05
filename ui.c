@@ -46,6 +46,7 @@ SOFTWARE.
 #define COLOR_PAIR_SYMBOL 9
 #define COLOR_PAIR_SYMBOL_SELECTED 10
 #define COLOR_PAIR_TITLE_BAR 11
+#define COLOR_PAIR_FOOTER_BAR 12
 
 #define PRICE_FLICKER_DURATION_MS 500
 #define PRICE_CHANGE_EPSILON 1e-9
@@ -78,6 +79,7 @@ static void format_number(char *buf, size_t size, double num);
 static void format_number_with_commas(char *buf, size_t size, double num);
 static void format_integer_with_commas(char *buf, size_t size, long long value);
 static void trim_trailing_zeros(char *buf);
+static void draw_footer_bar(const char *text);
 
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
@@ -86,6 +88,34 @@ static void reset_price_history(void) {
     last_visible_count = 0;
     // Reset scroll to top when the UI is initialized.
     price_board_scroll_offset = 0;
+}
+
+// Render a bottom footer bar with a contrasting background for interaction hints.
+static void draw_footer_bar(const char *text) {
+    if (!main_win || LINES <= 0) {
+        return;
+    }
+
+    int footer_y = LINES - 1;
+    if (footer_y < 0) {
+        return;
+    }
+
+    int start_x = (COLS >= 4) ? 2 : 0;
+    int text_width = COLS - start_x;
+    if (text_width < 0) {
+        text_width = 0;
+    }
+    if (colors_available) {
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_FOOTER_BAR));
+    }
+    mvwhline(main_win, footer_y, 0, ' ', COLS);
+    if (text && text_width > 0) {
+        mvwaddnstr(main_win, footer_y, start_x, text, text_width);
+    }
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_FOOTER_BAR));
+    }
 }
 
 // Render the price column cell with the appropriate color treatment for
@@ -241,6 +271,12 @@ void init_ui(void) {
     if (colors_available) {
         start_color();
         short selection_bg = COLOR_BLUE;
+        short footer_bg = COLOR_WHITE;
+        if (can_change_color() && COLORS >= 16) {
+            short grey_index = COLORS - 1;
+            init_color(grey_index, 500, 500, 500);
+            footer_bg = grey_index;
+        }
         init_pair(COLOR_PAIR_GREEN, COLOR_GREEN, COLOR_BLACK);
         init_pair(COLOR_PAIR_RED, COLOR_RED, COLOR_BLACK);
         init_pair(COLOR_PAIR_HEADER, COLOR_CYAN, COLOR_BLACK);
@@ -252,6 +288,7 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_SYMBOL, COLOR_YELLOW, COLOR_BLACK);
         init_pair(COLOR_PAIR_SYMBOL_SELECTED, COLOR_YELLOW, selection_bg);
         init_pair(COLOR_PAIR_TITLE_BAR, COLOR_BLACK, COLOR_WHITE);
+        init_pair(COLOR_PAIR_FOOTER_BAR, COLOR_BLACK, footer_bg);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
@@ -439,13 +476,13 @@ static void format_integer_with_commas(char *buf, size_t size, long long value) 
 // Translate an enum period into a user-facing label.
 static const char* period_label(Period period) {
     switch (period) {
-        case PERIOD_1MIN: return "1 Minute";
-        case PERIOD_15MIN: return "15 Minutes";
-        case PERIOD_1HOUR: return "1 Hour";
-        case PERIOD_4HOUR: return "4 Hours";
-        case PERIOD_1DAY: return "1 Day";
-        case PERIOD_1WEEK: return "1 Week";
-        case PERIOD_1MONTH: return "1 Month";
+        case PERIOD_1MIN: return "1 MINUTE";
+        case PERIOD_15MIN: return "15 MINUTES";
+        case PERIOD_1HOUR: return "1 HOUR";
+        case PERIOD_4HOUR: return "4 HOURS";
+        case PERIOD_1DAY: return "1 DAY";
+        case PERIOD_1WEEK: return "1 WEEK";
+        case PERIOD_1MONTH: return "1 MONTH";
         default: return "Unknown";
     }
 }
@@ -480,7 +517,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     // The ticker list MUST NOT render over the footer. Therefore we compute
     // the maximum list height dynamically from the current terminal size.
     const int board_start_y = 4;
-    const int footer_reserved_rows = 2;  // Footer/help row + safety buffer
+    const int footer_reserved_rows = 1;  // Reserved row for the footer bar
     int max_board_height = LINES - footer_reserved_rows - board_start_y;
     if (max_board_height < 1) {
         max_board_height = 1;
@@ -710,8 +747,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         mvwaddch(main_win, board_start_y + visible_rows - 1, 0, ACS_DARROW);
     }
 
-    mvwprintw(main_win, LINES - 2, 2,
-              "Keys: Up/Down Navigate/Scroll | Enter: View Chart | q: Quit");
+    draw_footer_bar("KEYS: UP/DOWN NAVIGATE/SCROLL | ENTER: VIEW CHART | Q: QUIT");
     
     wrefresh(main_win);
     // Run the flicker animation after the frame is painted so the color swap is
@@ -743,7 +779,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
 
     const char *period_str = period_label(period);
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "%s - %s Candlestick Chart", symbol, period_str);
+    mvwprintw(main_win, 0, 2, "%s - %s CANDLESTICK CHART", symbol, period_str);
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
 
     // Compute min/max for scaling the y-axis.
@@ -987,9 +1023,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
         }
     }
 
-    mvwprintw(main_win, LINES - 3, 2, "Interval: %s (Space to cycle)", period_str);
-    mvwprintw(main_win, LINES - 2, 2,
-              "Keys: Left/Right Move Cursor | Space Next Interval | ESC/q: Back");
+    draw_footer_bar("KEYS: LEFT/RIGHT MOVE CURSOR | SPACE NEXT INTERVAL | ESC/Q: BACK");
 
     wrefresh(main_win);
 }
