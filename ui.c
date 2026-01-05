@@ -76,6 +76,7 @@ static int price_board_scroll_offset = 0;
 static void format_number(char *buf, size_t size, double num);
 static void format_number_with_commas(char *buf, size_t size, double num);
 static void format_integer_with_commas(char *buf, size_t size, long long value);
+static void trim_trailing_zeros(char *buf);
 
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
@@ -148,13 +149,33 @@ static void draw_info_box(int x, int y, int width, int height,
     mvwvline(main_win, y + 1, x, ACS_VLINE, height - 2);
     mvwvline(main_win, y + 1, right, ACS_VLINE, height - 2);
 
-    char open_str[16], high_str[16], low_str[16], close_str[16];
+    char open_str[32], high_str[32], low_str[32], close_str[32];
     char volume_str[16], quote_volume_str[16];
     char taker_buy_base_str[16], taker_buy_quote_str[16];
-    format_number(open_str, sizeof(open_str), point->open);
-    format_number(high_str, sizeof(high_str), point->high);
-    format_number(low_str, sizeof(low_str), point->low);
-    format_number(close_str, sizeof(close_str), point->close);
+    if (point->open_text[0]) {
+        snprintf(open_str, sizeof(open_str), "%s", point->open_text);
+    } else {
+        format_number(open_str, sizeof(open_str), point->open);
+    }
+    trim_trailing_zeros(open_str);
+    if (point->high_text[0]) {
+        snprintf(high_str, sizeof(high_str), "%s", point->high_text);
+    } else {
+        format_number(high_str, sizeof(high_str), point->high);
+    }
+    trim_trailing_zeros(high_str);
+    if (point->low_text[0]) {
+        snprintf(low_str, sizeof(low_str), "%s", point->low_text);
+    } else {
+        format_number(low_str, sizeof(low_str), point->low);
+    }
+    trim_trailing_zeros(low_str);
+    if (point->close_text[0]) {
+        snprintf(close_str, sizeof(close_str), "%s", point->close_text);
+    } else {
+        format_number(close_str, sizeof(close_str), point->close);
+    }
+    trim_trailing_zeros(close_str);
     format_number(volume_str, sizeof(volume_str), point->volume);
     format_number(quote_volume_str, sizeof(quote_volume_str), point->quote_volume);
     format_number(taker_buy_base_str, sizeof(taker_buy_base_str), point->taker_buy_base_volume);
@@ -327,6 +348,38 @@ static void format_number(char *buf, size_t size, double num) {
     } else {
         snprintf(buf, size, "%.8f", num);
     }
+}
+
+// Trim useless trailing zeros (and the decimal point, if needed) from
+// numeric strings. This is applied only at render time so we preserve the
+// original API payload elsewhere.
+static void trim_trailing_zeros(char *buf) {
+    char *dot = strchr(buf, '.');
+    if (!dot) {
+        return;
+    }
+    char *end = buf + strlen(buf) - 1;
+    while (end > dot && *end == '0') {
+        *end-- = '\0';
+    }
+    if (end == dot) {
+        *end = '\0';
+    }
+}
+
+// Specialized formatter for Y-axis labels so extremely tight ranges still
+// show meaningful precision. The decimal depth ramps up as the visible
+// range shrinks to highlight subtle price moves.
+static void format_axis_price(char *buf, size_t size, double num,
+                              double range) {
+    int decimals = 2;
+    if (range < 0.5) decimals = 4;
+    if (range < 0.05) decimals = 6;
+    if (range < 0.005) decimals = 8;
+    if (range < 0.0005) decimals = 10;
+    if (decimals > 10) decimals = 10;
+    snprintf(buf, size, "%.*f", decimals, num);
+    trim_trailing_zeros(buf);
 }
 
 // Apply thousands separators to a numeric string produced by format_number().
@@ -504,21 +557,21 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     
     // Column headers and a horizontal rule to separate the board.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
-    mvwprintw(main_win, 2, 2, "%-15s %15s %15s", "Symbol", "Price", "Change 24h");
+    mvwprintw(main_win, 2, 2, "%-15s %15s %15s", "SYMBOL", "PRICE", "CHANGE 24H");
     if (show_high) {
-        mvwprintw(main_win, 2, HIGH_COL, "%12s", "High");
+        mvwprintw(main_win, 2, HIGH_COL, "%12s", "HIGH");
     }
     if (show_low) {
-        mvwprintw(main_win, 2, LOW_COL, "%12s", "Low");
+        mvwprintw(main_win, 2, LOW_COL, "%12s", "LOW");
     }
     if (show_volume) {
-        mvwprintw(main_win, 2, VOLUME_COL, "%14s", "Volume");
+        mvwprintw(main_win, 2, VOLUME_COL, "%14s", "VOLUME");
     }
     if (show_trades) {
-        mvwprintw(main_win, 2, TRADES_COL, "%10s", "Trades");
+        mvwprintw(main_win, 2, TRADES_COL, "%10s", "TRADES");
     }
     if (show_quote) {
-        mvwprintw(main_win, 2, QUOTE_COL, "%14s", "Quote Vol");
+        mvwprintw(main_win, 2, QUOTE_COL, "%14s", "QUOTE VOL");
     }
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
     mvwhline(main_win, 3, 2, ACS_HLINE, COLS - 4);
@@ -569,7 +622,12 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         
         // Price column with color coded trend and optional flicker on change.
         char price_str[32];
-        format_number(price_str, sizeof(price_str), tickers[i].price);
+        if (tickers[i].price_text[0]) {
+            snprintf(price_str, sizeof(price_str), "%s", tickers[i].price_text);
+        } else {
+            format_number(price_str, sizeof(price_str), tickers[i].price);
+        }
+        trim_trailing_zeros(price_str);
         bool daily_up = tickers[i].change_24h >= 0.0;
         chtype price_arrow = (price_changed
             ? (price_went_up ? ACS_UARROW : ACS_DARROW)
@@ -603,11 +661,21 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
 
         char number_buf[32];
         if (show_high) {
-            format_number(number_buf, sizeof(number_buf), tickers[i].high_price);
+            if (tickers[i].high_text[0]) {
+                snprintf(number_buf, sizeof(number_buf), "%s", tickers[i].high_text);
+            } else {
+                format_number(number_buf, sizeof(number_buf), tickers[i].high_price);
+            }
+            trim_trailing_zeros(number_buf);
             mvwprintw(main_win, y, HIGH_COL, "%12s", number_buf);
         }
         if (show_low) {
-            format_number(number_buf, sizeof(number_buf), tickers[i].low_price);
+            if (tickers[i].low_text[0]) {
+                snprintf(number_buf, sizeof(number_buf), "%s", tickers[i].low_text);
+            } else {
+                format_number(number_buf, sizeof(number_buf), tickers[i].low_price);
+            }
+            trim_trailing_zeros(number_buf);
             mvwprintw(main_win, y, LOW_COL, "%12s", number_buf);
         }
         if (show_volume) {
@@ -746,8 +814,8 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     // Y-axis labels with tick marks every 25% of the range.
     for (int i = 0; i <= 4; i++) {
         double price = max_price - (price_range * i / 4.0);
-        char price_str[16];
-        format_number(price_str, sizeof(price_str), price);
+        char price_str[24];
+        format_axis_price(price_str, sizeof(price_str), price, price_range);
         int y = chart_y + (chart_height * i / 4);
         mvwprintw(main_win, y, 2, "%10s", price_str);
         mvwaddch(main_win, y, axis_width, ACS_PLUS);

@@ -68,6 +68,12 @@ typedef struct {
     int trade_count;
     /** Sample timestamp in seconds since Unix epoch. */
     uint64_t timestamp;
+    /** Raw price text returned by the API. */
+    char price_text[32];
+    /** Raw high price text returned by the API. */
+    char high_text[32];
+    /** Raw low price text returned by the API. */
+    char low_text[32];
 } TickerData;
 
 /**
@@ -96,6 +102,14 @@ typedef struct {
     double taker_buy_base_volume;
     /** Taker buy volume measured in quote asset units. */
     double taker_buy_quote_volume;
+    /** String-preserved open price. */
+    char open_text[32];
+    /** String-preserved high price. */
+    char high_text[32];
+    /** String-preserved low price. */
+    char low_text[32];
+    /** String-preserved close price. */
+    char close_text[32];
 } PricePoint;
 
 /**

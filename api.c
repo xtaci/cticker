@@ -130,6 +130,9 @@ int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data) {
     data->volume_base = 0.0;
     data->volume_quote = 0.0;
     data->trade_count = 0;
+    data->price_text[0] = '\0';
+    data->high_text[0] = '\0';
+    data->low_text[0] = '\0';
     
     json_t *price_json = json_object_get(root, "lastPrice");
     json_t *change_json = json_object_get(root, "priceChangePercent");
@@ -140,7 +143,13 @@ int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data) {
     json_t *trade_count_json = json_object_get(root, "count");
     
     if (json_is_string(price_json)) {
-        data->price = atof(json_string_value(price_json));
+        const char *price_str = json_string_value(price_json);
+        data->price = atof(price_str);
+        snprintf(data->price_text, sizeof(data->price_text), "%s", price_str);
+    }
+
+    if (data->price_text[0] == '\0') {
+        snprintf(data->price_text, sizeof(data->price_text), "%.8f", data->price);
     }
     
     if (json_is_string(change_json)) {
@@ -148,15 +157,27 @@ int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data) {
     }
 
     if (json_is_string(high_json)) {
-        data->high_price = atof(json_string_value(high_json));
+        const char *high_str = json_string_value(high_json);
+        data->high_price = atof(high_str);
+        snprintf(data->high_text, sizeof(data->high_text), "%s", high_str);
     } else {
         data->high_price = data->price;
     }
 
+    if (data->high_text[0] == '\0') {
+        snprintf(data->high_text, sizeof(data->high_text), "%.8f", data->high_price);
+    }
+
     if (json_is_string(low_json)) {
-        data->low_price = atof(json_string_value(low_json));
+        const char *low_str = json_string_value(low_json);
+        data->low_price = atof(low_str);
+        snprintf(data->low_text, sizeof(data->low_text), "%s", low_str);
     } else {
         data->low_price = data->price;
+    }
+
+    if (data->low_text[0] == '\0') {
+        snprintf(data->low_text, sizeof(data->low_text), "%.8f", data->low_price);
     }
 
     if (json_is_string(volume_json)) {
@@ -318,9 +339,13 @@ int fetch_historical_data(const char *restrict symbol, Period period,
             point->timestamp = json_integer_value(timestamp) / 1000;
             point->close_time = json_integer_value(close_time) / 1000;
             point->open = atof(json_string_value(open_price));
+            snprintf(point->open_text, sizeof(point->open_text), "%s", json_string_value(open_price));
             point->high = atof(json_string_value(high_price));
+            snprintf(point->high_text, sizeof(point->high_text), "%s", json_string_value(high_price));
             point->low = atof(json_string_value(low_price));
+            snprintf(point->low_text, sizeof(point->low_text), "%s", json_string_value(low_price));
             point->close = atof(json_string_value(close_price));
+            snprintf(point->close_text, sizeof(point->close_text), "%s", json_string_value(close_price));
             point->volume = atof(json_string_value(volume));
             point->quote_volume = atof(json_string_value(quote_volume));
             point->trade_count = (int)json_integer_value(trade_count);
