@@ -804,8 +804,17 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     }
 
     const char *period_str = period_label(period);
+    char header_text[128];
+    snprintf(header_text, sizeof(header_text), "%s - %s CANDLESTICK CHART", symbol, period_str);
+    int header_len = (int)strlen(header_text);
+    int header_x = (COLS - header_len) / 2;
+    if (header_x < 0) {
+        header_x = 0;
+    }
+
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "%s - %s CANDLESTICK CHART", symbol, period_str);
+    mvwhline(main_win, 0, 0, ' ', COLS);
+    mvwprintw(main_win, 0, header_x, "%s", header_text);
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
 
     // Compute min/max for scaling the y-axis.
