@@ -339,8 +339,8 @@ void draw_splash_screen(void) {
         art_lines++;
     }
 
-    const char *loading1 = "Loading...";
-    const char *loading2 = "Fetching data from Binance API";
+    const char *loading1 = "LOADING...";
+    const char *loading2 = "FETCHING DATA FROM BINANCE API";
 
     int total_lines = art_lines + 2 + 2;  // art + blank + two loading lines
     int start_y = (LINES - total_lines) / 2;
