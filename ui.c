@@ -32,6 +32,7 @@ SOFTWARE.
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <locale.h>
 #include "cticker.h"
 
 #define COLOR_PAIR_GREEN 1
@@ -43,7 +44,7 @@ SOFTWARE.
 #define COLOR_PAIR_GREEN_SELECTED 7
 #define COLOR_PAIR_RED_SELECTED 8
 
-#define PRICE_FLASH_DURATION_MS 500
+#define PRICE_FLICKER_DURATION_MS 500
 #define PRICE_CHANGE_EPSILON 1e-9
 #define PRICE_COL 18
 #define CHANGE_COL 35
@@ -77,26 +78,29 @@ static void reset_price_history(void) {
 }
 
 // Render the price column cell with the appropriate color treatment for
-// direction, selection state, and the short-lived flash animation.
-static void draw_price_cell(int y, const char *price_str, bool daily_up,
-                            bool row_selected, bool flash, bool flash_up) {
-    if (!colors_available) {
-        mvwprintw(main_win, y, PRICE_COL, "%15s", price_str);
-        return;
+// direction, selection state, and the short-lived flicker animation.
+static void draw_price_cell(int y, const char *price_str, chtype arrow,
+                            bool daily_up, bool row_selected, bool flicker,
+                            bool flicker_up) {
+    int pair = COLOR_PAIR_GREEN;
+    if (colors_available) {
+        if (flicker) {
+            pair = flicker_up ? COLOR_PAIR_GREEN_BG : COLOR_PAIR_RED_BG;
+        } else if (row_selected) {
+            pair = daily_up ? COLOR_PAIR_GREEN_SELECTED : COLOR_PAIR_RED_SELECTED;
+        } else {
+            pair = daily_up ? COLOR_PAIR_GREEN : COLOR_PAIR_RED;
+        }
+        wattron(main_win, COLOR_PAIR(pair) | A_BOLD);
     }
 
-    int pair;
-    if (flash) {
-        pair = flash_up ? COLOR_PAIR_GREEN_BG : COLOR_PAIR_RED_BG;
-    } else if (row_selected) {
-        pair = daily_up ? COLOR_PAIR_GREEN_SELECTED : COLOR_PAIR_RED_SELECTED;
-    } else {
-        pair = daily_up ? COLOR_PAIR_GREEN : COLOR_PAIR_RED;
-    }
+    // Print arrow separately to keep cell width predictable.
+    mvwaddch(main_win, y, PRICE_COL, arrow);
+    mvwprintw(main_win, y, PRICE_COL + 1, "%14s", price_str);
 
-    wattron(main_win, COLOR_PAIR(pair) | A_BOLD);
-    mvwprintw(main_win, y, PRICE_COL, "%15s", price_str);
-    wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
+    }
 }
 
 // Render the 24h change column cell with the correct gain/loss palette.
@@ -176,6 +180,7 @@ static void draw_info_box(int x, int y, int width, int height,
 
 // Initialize ncurses and prepare the root window plus color palette.
 void init_ui(void) {
+    setlocale(LC_ALL, "");
     initscr();
     cbreak();
     noecho();
@@ -327,7 +332,7 @@ static int price_to_row(double price, double min_price, double max_price,
 }
 
 // Draw the ticker board listing all configured symbols along with their latest
-// price, change, and a transient flash for updated rows.
+// price, change, and a transient flicker for updated rows.
 void draw_main_screen(TickerData *tickers, int count, int selected) {
     werase(main_win);
     // Layout (screen coordinates):
@@ -383,16 +388,17 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         }
     }
 
-    // Track cells that need to be redrawn after the flash animation completes.
+    // Track cells that need to be redrawn after the flicker animation completes.
     typedef struct {
         int y;
         char price_text[32];
+        chtype arrow;
         bool daily_up;
         bool row_selected;
         bool price_went_up;
-    } PriceFlashInfo;
-    PriceFlashInfo flash_queue[MAX_SYMBOLS];
-    int flash_count = 0;
+    } PriceFlickerInfo;
+    PriceFlickerInfo flicker_queue[MAX_SYMBOLS];
+    int flicker_count = 0;
     if (count < last_visible_count) {
         for (int i = count; i < last_visible_count && i < MAX_SYMBOLS; ++i) {
             last_prices[i] = NAN;
@@ -417,7 +423,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
     mvwhline(main_win, 3, 2, ACS_HLINE, COLS - 4);
     
-    // Draw each ticker row along with optional flash effects on price updates.
+    // Draw each ticker row along with optional flicker effects on price updates.
     //
     // NOTE: Even if a row is currently outside the viewport, we still update
     // last_prices[i]. This keeps the price-change detection correct when the
@@ -425,8 +431,9 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     for (int i = 0; i < count; i++) {
         double previous_price = (i < MAX_SYMBOLS) ? last_prices[i] : NAN;
         bool had_previous = !isnan(previous_price);
-        bool price_went_up = !had_previous || tickers[i].price >= previous_price;
-        bool price_changed = had_previous && fabs(tickers[i].price - previous_price) > PRICE_CHANGE_EPSILON;
+        bool price_went_up = had_previous ? (tickers[i].price > previous_price) : true;
+        bool price_changed = had_previous &&
+            fabs(tickers[i].price - previous_price) > PRICE_CHANGE_EPSILON;
         bool in_view = i >= price_board_scroll_offset &&
                        i < price_board_scroll_offset + visible_rows;
 
@@ -450,21 +457,26 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         // Trading pair.
         mvwprintw(main_win, y, 2, "%-15s", tickers[i].symbol);
         
-        // Price column with color coded trend and optional flash on change.
+        // Price column with color coded trend and optional flicker on change.
         char price_str[32];
         format_number(price_str, sizeof(price_str), tickers[i].price);
         bool daily_up = tickers[i].change_24h >= 0.0;
         bool row_selected = (i == selected);
-        draw_price_cell(y, price_str, daily_up, row_selected, price_changed, price_went_up);
-        if (colors_available && price_changed && flash_count < MAX_SYMBOLS) {
-            flash_queue[flash_count].y = y;
-            snprintf(flash_queue[flash_count].price_text,
-                     sizeof(flash_queue[flash_count].price_text), "%s",
+        chtype price_arrow = (price_changed
+            ? (price_went_up ? ACS_UARROW : ACS_DARROW)
+            : ' ');
+        draw_price_cell(y, price_str, price_arrow, daily_up, row_selected,
+                        price_changed, price_went_up);
+        if (colors_available && price_changed && flicker_count < MAX_SYMBOLS) {
+            flicker_queue[flicker_count].y = y;
+            snprintf(flicker_queue[flicker_count].price_text,
+                     sizeof(flicker_queue[flicker_count].price_text), "%s",
                      price_str);
-            flash_queue[flash_count].daily_up = daily_up;
-            flash_queue[flash_count].row_selected = row_selected;
-            flash_queue[flash_count].price_went_up = price_went_up;
-            flash_count++;
+            flicker_queue[flicker_count].arrow = price_arrow;
+            flicker_queue[flicker_count].daily_up = daily_up;
+            flicker_queue[flicker_count].row_selected = row_selected;
+            flicker_queue[flicker_count].price_went_up = price_went_up;
+            flicker_count++;
         }
         if (i < MAX_SYMBOLS) {
             last_prices[i] = tickers[i].price;
@@ -497,14 +509,15 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
               "Keys: Up/Down Navigate/Scroll | Enter: View Chart | q: Quit");
     
     wrefresh(main_win);
-    // Run the flash animation after the frame is painted so the color swap is
+    // Run the flicker animation after the frame is painted so the color swap is
     // visible without blocking the drawing loop for every row.
-    if (colors_available && flash_count > 0) {
-        napms(PRICE_FLASH_DURATION_MS);
-        for (int i = 0; i < flash_count; ++i) {
-            draw_price_cell(flash_queue[i].y, flash_queue[i].price_text,
-                            flash_queue[i].daily_up, flash_queue[i].row_selected,
-                            false, flash_queue[i].price_went_up);
+    if (colors_available && flicker_count > 0) {
+        napms(PRICE_FLICKER_DURATION_MS);
+        for (int i = 0; i < flicker_count; ++i) {
+            draw_price_cell(flicker_queue[i].y, flicker_queue[i].price_text,
+                            flicker_queue[i].arrow, flicker_queue[i].daily_up,
+                            flicker_queue[i].row_selected, false,
+                            flicker_queue[i].price_went_up);
         }
         wrefresh(main_win);
     }
