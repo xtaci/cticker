@@ -45,6 +45,7 @@ SOFTWARE.
 #define COLOR_PAIR_RED_SELECTED 8
 #define COLOR_PAIR_SYMBOL 9
 #define COLOR_PAIR_SYMBOL_SELECTED 10
+#define COLOR_PAIR_TITLE_BAR 11
 
 #define PRICE_FLICKER_DURATION_MS 500
 #define PRICE_CHANGE_EPSILON 1e-9
@@ -250,6 +251,7 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_RED_SELECTED, COLOR_RED, selection_bg);
         init_pair(COLOR_PAIR_SYMBOL, COLOR_YELLOW, COLOR_BLACK);
         init_pair(COLOR_PAIR_SYMBOL_SELECTED, COLOR_YELLOW, selection_bg);
+        init_pair(COLOR_PAIR_TITLE_BAR, COLOR_MAGENTA, COLOR_BLACK);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
@@ -545,9 +547,9 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     last_visible_count = count;
     
     // Title bar communicates the app name.
-    wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
-    mvwprintw(main_win, 0, 2, "CTICKER - CRYPTOCURRENCY PRICE BOARD");
-    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
+    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
+    mvwprintw(main_win, 0, 2, "CTICKER >> PRICE BOARD");
+    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
     
     // Timestamp on the right keeps the board anchored in real time.
     time_t now = time(NULL);
@@ -740,9 +742,9 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     }
 
     const char *period_str = period_label(period);
-    wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
+    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
     mvwprintw(main_win, 0, 2, "%s - %s Candlestick Chart", symbol, period_str);
-    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER) | A_BOLD);
+    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
 
     // Compute min/max for scaling the y-axis.
     double min_price = points[0].low;
