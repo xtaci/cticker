@@ -50,6 +50,11 @@ SOFTWARE.
 #define PRICE_CHANGE_EPSILON 1e-9
 #define PRICE_COL 18
 #define CHANGE_COL 35
+#define HIGH_COL 52
+#define LOW_COL 70
+#define VOLUME_COL 88
+#define TRADES_COL 108
+#define QUOTE_COL 126
 
 static WINDOW *main_win = NULL;
 static bool colors_available = false;
@@ -69,6 +74,8 @@ static int last_visible_count = 0;
 static int price_board_scroll_offset = 0;
 
 static void format_number(char *buf, size_t size, double num);
+static void format_number_with_commas(char *buf, size_t size, double num);
+static void format_integer_with_commas(char *buf, size_t size, long long value);
 
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
@@ -322,6 +329,58 @@ static void format_number(char *buf, size_t size, double num) {
     }
 }
 
+// Apply thousands separators to a numeric string produced by format_number().
+static void insert_commas(const char *src, char *dest, size_t dest_size) {
+    if (dest_size == 0) {
+        return;
+    }
+
+    const char *start = src;
+    bool negative = false;
+    if (*start == '-') {
+        negative = true;
+        start++;
+    }
+
+    const char *dot = strchr(start, '.');
+    size_t int_len = dot ? (size_t)(dot - start) : strlen(start);
+    size_t out = 0;
+
+    if (negative && out < dest_size - 1) {
+        dest[out++] = '-';
+    }
+
+    for (size_t i = 0; i < int_len && out < dest_size - 1; ++i) {
+        dest[out++] = start[i];
+        size_t remaining = int_len - i - 1;
+        if (remaining > 0 && remaining % 3 == 0 && out < dest_size - 1) {
+            dest[out++] = ',';
+        }
+    }
+
+    if (dot && out < dest_size - 1) {
+        dest[out++] = '.';
+        const char *frac = dot + 1;
+        while (*frac && out < dest_size - 1) {
+            dest[out++] = *frac++;
+        }
+    }
+
+    dest[out] = '\0';
+}
+
+static void format_number_with_commas(char *buf, size_t size, double num) {
+    char raw[64];
+    format_number(raw, sizeof(raw), num);
+    insert_commas(raw, buf, size);
+}
+
+static void format_integer_with_commas(char *buf, size_t size, long long value) {
+    char raw[32];
+    snprintf(raw, sizeof(raw), "%lld", value);
+    insert_commas(raw, buf, size);
+}
+
 // Translate an enum period into a user-facing label.
 static const char* period_label(Period period) {
     switch (period) {
@@ -372,6 +431,12 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         max_board_height = 1;
     }
     int visible_rows = max_board_height;
+
+    bool show_high = (COLS > HIGH_COL + 10);
+    bool show_low = (COLS > LOW_COL + 10);
+    bool show_volume = (COLS > VOLUME_COL + 12);
+    bool show_trades = (COLS > TRADES_COL + 6);
+    bool show_quote = (COLS > QUOTE_COL + 12);
 
     // Compute and clamp the viewport window (price_board_scroll_offset .. + visible_rows).
     // Policy:
@@ -440,6 +505,21 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
     // Column headers and a horizontal rule to separate the board.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
     mvwprintw(main_win, 2, 2, "%-15s %15s %15s", "Symbol", "Price", "Change 24h");
+    if (show_high) {
+        mvwprintw(main_win, 2, HIGH_COL, "%12s", "High");
+    }
+    if (show_low) {
+        mvwprintw(main_win, 2, LOW_COL, "%12s", "Low");
+    }
+    if (show_volume) {
+        mvwprintw(main_win, 2, VOLUME_COL, "%14s", "Volume");
+    }
+    if (show_trades) {
+        mvwprintw(main_win, 2, TRADES_COL, "%10s", "Trades");
+    }
+    if (show_quote) {
+        mvwprintw(main_win, 2, QUOTE_COL, "%14s", "Quote Vol");
+    }
     wattroff(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
     mvwhline(main_win, 3, 2, ACS_HLINE, COLS - 4);
     
@@ -516,6 +596,32 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         snprintf(change_str, sizeof(change_str), "%+14.2f%%", tickers[i].change_24h);
         bool change_up = tickers[i].change_24h >= 0;
         draw_change_cell(y, change_str, change_up, row_selected);
+
+        if (row_selected && colors_available) {
+            wattron(main_win, COLOR_PAIR(COLOR_PAIR_SELECTED));
+        }
+
+        char number_buf[32];
+        if (show_high) {
+            format_number_with_commas(number_buf, sizeof(number_buf), tickers[i].high_price);
+            mvwprintw(main_win, y, HIGH_COL, "%12s", number_buf);
+        }
+        if (show_low) {
+            format_number_with_commas(number_buf, sizeof(number_buf), tickers[i].low_price);
+            mvwprintw(main_win, y, LOW_COL, "%12s", number_buf);
+        }
+        if (show_volume) {
+            format_number_with_commas(number_buf, sizeof(number_buf), tickers[i].volume_base);
+            mvwprintw(main_win, y, VOLUME_COL, "%14s", number_buf);
+        }
+        if (show_trades) {
+            format_integer_with_commas(number_buf, sizeof(number_buf), tickers[i].trade_count);
+            mvwprintw(main_win, y, TRADES_COL, "%10s", number_buf);
+        }
+        if (show_quote) {
+            format_number_with_commas(number_buf, sizeof(number_buf), tickers[i].volume_quote);
+            mvwprintw(main_win, y, QUOTE_COL, "%14s", number_buf);
+        }
         
         if (i == selected) {
             wattroff(main_win, COLOR_PAIR(COLOR_PAIR_SELECTED));

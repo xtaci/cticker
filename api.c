@@ -123,9 +123,21 @@ int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data) {
     
     /* Extract data into the caller-owned output struct. */
     strcpy(data->symbol, symbol);
+    data->price = 0.0;
+    data->change_24h = 0.0;
+    data->high_price = 0.0;
+    data->low_price = 0.0;
+    data->volume_base = 0.0;
+    data->volume_quote = 0.0;
+    data->trade_count = 0;
     
     json_t *price_json = json_object_get(root, "lastPrice");
     json_t *change_json = json_object_get(root, "priceChangePercent");
+    json_t *high_json = json_object_get(root, "highPrice");
+    json_t *low_json = json_object_get(root, "lowPrice");
+    json_t *volume_json = json_object_get(root, "volume");
+    json_t *quote_volume_json = json_object_get(root, "quoteVolume");
+    json_t *trade_count_json = json_object_get(root, "count");
     
     if (json_is_string(price_json)) {
         data->price = atof(json_string_value(price_json));
@@ -133,6 +145,36 @@ int fetch_ticker_data(const char *restrict symbol, TickerData *restrict data) {
     
     if (json_is_string(change_json)) {
         data->change_24h = atof(json_string_value(change_json));
+    }
+
+    if (json_is_string(high_json)) {
+        data->high_price = atof(json_string_value(high_json));
+    } else {
+        data->high_price = data->price;
+    }
+
+    if (json_is_string(low_json)) {
+        data->low_price = atof(json_string_value(low_json));
+    } else {
+        data->low_price = data->price;
+    }
+
+    if (json_is_string(volume_json)) {
+        data->volume_base = atof(json_string_value(volume_json));
+    } else {
+        data->volume_base = 0.0;
+    }
+
+    if (json_is_string(quote_volume_json)) {
+        data->volume_quote = atof(json_string_value(quote_volume_json));
+    } else {
+        data->volume_quote = 0.0;
+    }
+
+    if (json_is_integer(trade_count_json)) {
+        data->trade_count = (int)json_integer_value(trade_count_json);
+    } else {
+        data->trade_count = 0;
     }
     
     data->timestamp = time(NULL);

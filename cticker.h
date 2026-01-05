@@ -56,6 +56,16 @@ typedef struct {
     double price;
     /** 24-hour price change percentage (e.g. +1.23). */
     double change_24h;
+    /** 24h high price. */
+    double high_price;
+    /** 24h low price. */
+    double low_price;
+    /** 24h base asset volume. */
+    double volume_base;
+    /** 24h quote asset volume. */
+    double volume_quote;
+    /** 24h trade count. */
+    int trade_count;
     /** Sample timestamp in seconds since Unix epoch. */
     uint64_t timestamp;
 } TickerData;
