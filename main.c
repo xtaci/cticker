@@ -123,7 +123,7 @@ static void* fetch_data_thread(void *arg) {
  *
  * On success, takes ownership of the new_points buffer.
  */
-static int reload_chart_data(const char symbol[static 1], Period period,
+static int chart_reload_data(const char symbol[static 1], Period period,
                              PricePoint *points[static 1], int count[static 1]) {
     /**
      * Helper that swaps in a freshly fetched candle array.
@@ -235,7 +235,7 @@ static void render_price_board(int selected) {
  *
  * @return true on success (chart ready), false on failure.
  */
-static bool open_chart(int selected, Period current_period,
+static bool chart_open(int selected, Period current_period,
                                      PricePoint *chart_points[static 1],
                                      int chart_count[static 1],
                                      char chart_symbol[static 1],
@@ -244,7 +244,7 @@ static bool open_chart(int selected, Period current_period,
     strcpy(chart_symbol, global_tickers[selected].symbol);
     pthread_mutex_unlock(&data_mutex);
 
-    if (reload_chart_data(chart_symbol, current_period, chart_points, chart_count) == 0) {
+    if (chart_reload_data(chart_symbol, current_period, chart_points, chart_count) == 0) {
         *chart_cursor_idx = (*chart_count > 0) ? (*chart_count - 1) : -1;
         return true;
     }
@@ -256,7 +256,7 @@ static bool open_chart(int selected, Period current_period,
 /**
  * @brief Release chart buffers and reset chart view indices.
  */
-static void reset_chart_state(PricePoint *chart_points[static 1],
+static void chart_reset_state(PricePoint *chart_points[static 1],
                               int chart_count[static 1],
                               int chart_cursor_idx[static 1]) {
     if (*chart_points) {
@@ -267,7 +267,7 @@ static void reset_chart_state(PricePoint *chart_points[static 1],
     *chart_cursor_idx = -1;
 }
 
-static void change_chart_period(int step, char chart_symbol[static 1],
+static void chart_change_period(int step, char chart_symbol[static 1],
                                 Period current_period[static 1],
                                 PricePoint *chart_points[static 1],
                                 int chart_count[static 1],
@@ -278,7 +278,7 @@ static void change_chart_period(int step, char chart_symbol[static 1],
         next += PERIOD_COUNT;
     }
     *current_period = (Period)next;
-    if (reload_chart_data(chart_symbol, *current_period, chart_points, chart_count) == 0) {
+    if (chart_reload_data(chart_symbol, *current_period, chart_points, chart_count) == 0) {
         if (*chart_count > 0) {
             if (*chart_cursor_idx >= *chart_count) {
                 *chart_cursor_idx = *chart_count - 1;
@@ -298,7 +298,7 @@ static void change_chart_period(int step, char chart_symbol[static 1],
 /**
  * @brief Handle key input while in chart mode.
  */
-static void handle_chart_input(int ch, char chart_symbol[static 1],
+static void chart_handle_input(int ch, char chart_symbol[static 1],
                                Period current_period[static 1],
                                PricePoint *chart_points[static 1],
                                int chart_count[static 1],
@@ -306,7 +306,7 @@ static void handle_chart_input(int ch, char chart_symbol[static 1],
                                bool show_chart[static 1]) {
     switch (ch) {
         case ' ': {
-            change_chart_period(1, chart_symbol, current_period, chart_points, chart_count,
+            chart_change_period(1, chart_symbol, current_period, chart_points, chart_count,
                                 chart_cursor_idx);
             break;
         }
@@ -324,7 +324,7 @@ static void handle_chart_input(int ch, char chart_symbol[static 1],
         case 'Q':
         case 27:  // ESC
             *show_chart = false;
-            reset_chart_state(chart_points, chart_count, chart_cursor_idx);
+            chart_reset_state(chart_points, chart_count, chart_cursor_idx);
             break;
         default:
             break;
@@ -353,7 +353,7 @@ static void handle_price_board_input(int ch, int selected[static 1], Period curr
         case '\n':
         case '\r':
         case KEY_ENTER:
-            if (open_chart(*selected, current_period, chart_points, chart_count,
+            if (chart_open(*selected, current_period, chart_points, chart_count,
                                           chart_symbol, chart_cursor_idx)) {
                 *show_chart = true;
             }
@@ -397,13 +397,13 @@ static void run_event_loop(void) {
             if (getmouse(&ev) == OK) {
                 if (show_chart) {
                     if (ev.bstate & (BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED)) {
-                        handle_chart_input(27, chart_symbol, &current_period, &chart_points,
+                        chart_handle_input(27, chart_symbol, &current_period, &chart_points,
                                            &chart_count, &chart_cursor_idx, &show_chart);
                     } else if (ev.bstate & BUTTON4_PRESSED) {
-                        change_chart_period(-1, chart_symbol, &current_period, &chart_points,
+                        chart_change_period(-1, chart_symbol, &current_period, &chart_points,
                                             &chart_count, &chart_cursor_idx);
                     } else if (ev.bstate & BUTTON5_PRESSED) {
-                        change_chart_period(1, chart_symbol, &current_period, &chart_points,
+                        chart_change_period(1, chart_symbol, &current_period, &chart_points,
                                            &chart_count, &chart_cursor_idx);
                     } else if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
                         int idx = ui_chart_hit_test_index(ev.x, chart_count);
@@ -427,7 +427,7 @@ static void run_event_loop(void) {
                         int row = ui_price_board_hit_test_row(ev.y, ticker_count);
                         if (row >= 0) {
                             selected = row;
-                            if (open_chart(selected, current_period, &chart_points,
+                            if (chart_open(selected, current_period, &chart_points,
                                                          &chart_count, chart_symbol, &chart_cursor_idx)) {
                                 show_chart = true;
                             }
@@ -447,7 +447,7 @@ static void run_event_loop(void) {
         }
 
         if (show_chart) {
-            handle_chart_input(ch, chart_symbol, &current_period, &chart_points,
+            chart_handle_input(ch, chart_symbol, &current_period, &chart_points,
                                &chart_count, &chart_cursor_idx, &show_chart);
         } else {
             handle_price_board_input(ch, &selected, current_period, &show_chart,
