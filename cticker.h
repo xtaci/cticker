@@ -255,7 +255,7 @@ int ui_chart_hit_test_index(int mouse_x, int total_points);
  * @param[in] period Time interval label for the chart.
  * @param[in] selected_index Selected candle index within @p points.
  */
-void draw_chart(const char *restrict symbol, size_t count,
+void draw_chart(const char *restrict symbol, int count,
                 PricePoint points[count], Period period, int selected_index);
 
 /**
