@@ -810,8 +810,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
 
 // Draw the interactive candlestick chart along with axis labels, cursor, and
 // metadata for the currently selected candle.
-void draw_chart(const char *restrict symbol, PricePoint *restrict points,
-                int count, Period period, int selected_index) {
+void draw_chart(const char *restrict symbol, size_t count, PricePoint points[count],
+                Period period, int selected_index) {
     werase(main_win);
 
     if (count == 0) {
@@ -837,7 +837,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points,
     // Compute min/max for scaling the y-axis.
     double min_price = points[0].low;
     double max_price = points[0].high;
-    for (int i = 1; i < count; i++) {
+    for (size_t i = 1; i < count; ++i) {
         if (points[i].low < min_price) min_price = points[i].low;
         if (points[i].high > max_price) max_price = points[i].high;
     }
@@ -915,40 +915,48 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points,
     const int candle_stride = 2;  // 1 column for body + 1 column gap for readability
     int max_columns = chart_width / candle_stride;
     if (max_columns < 1) max_columns = 1;
-    int visible_points = count < max_columns ? count : max_columns;
-    if (visible_points < 1) visible_points = (count > 0) ? 1 : 0;
+    size_t visible_points_sz = count < (size_t)max_columns
+        ? count
+        : (size_t)max_columns;
+    if (visible_points_sz == 0 && count > 0) {
+        visible_points_sz = 1;
+    }
+    int visible_points = (int)visible_points_sz;
     chart_view_start_x = chart_x;
     chart_view_visible_points = visible_points;
     chart_view_stride = candle_stride;
 
     // Guard the selected index. Default to the newest candle.
-    int selection_idx = (selected_index >= 0 && selected_index < count)
-        ? selected_index
-        : (count - 1);
-    if (selection_idx < 0) selection_idx = 0;
-
-    int start_idx = 0;
-    if (visible_points < count) {
-        start_idx = count - visible_points;
-        if (selection_idx < start_idx) {
-            start_idx = selection_idx;
-        } else if (selection_idx >= start_idx + visible_points) {
-            start_idx = selection_idx - visible_points + 1;
-        }
-        int max_start = count - visible_points;
-        if (start_idx > max_start) start_idx = max_start;
-        if (start_idx < 0) start_idx = 0;
+    size_t selection_idx_sz;
+    if (selected_index >= 0 && (size_t)selected_index < count) {
+        selection_idx_sz = (size_t)selected_index;
+    } else {
+        selection_idx_sz = count - 1;
     }
-    chart_view_start_idx = start_idx;
+    size_t start_idx_sz = 0;
+    if (visible_points_sz < count) {
+        start_idx_sz = count - visible_points_sz;
+        if (selection_idx_sz < start_idx_sz) {
+            start_idx_sz = selection_idx_sz;
+        } else if (selection_idx_sz >= start_idx_sz + visible_points_sz) {
+            start_idx_sz = selection_idx_sz - visible_points_sz + 1;
+        }
+        size_t max_start = count - visible_points_sz;
+        if (start_idx_sz > max_start) {
+            start_idx_sz = max_start;
+        }
+    }
+    chart_view_start_idx = (int)start_idx_sz;
 
     int selected_column = -1;
-    if (selection_idx >= start_idx && selection_idx < start_idx + visible_points) {
-        selected_column = selection_idx - start_idx;
+    if (selection_idx_sz >= start_idx_sz &&
+        selection_idx_sz < start_idx_sz + visible_points_sz) {
+        selected_column = (int)(selection_idx_sz - start_idx_sz);
     }
 
     // Draw every visible candle using ASCII wick/body glyphs.
     for (int col = 0; col < visible_points; col++) {
-        PricePoint *pt = &points[start_idx + col];
+        PricePoint *pt = &points[start_idx_sz + (size_t)col];
         int screen_x = chart_x + col * candle_stride;
 
         int high_y = price_to_row(pt->high, min_price, max_price, chart_height, chart_y);
@@ -979,7 +987,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points,
         wattroff(main_win, color_pair);
     }
 
-    PricePoint *selected_point = (count > 0) ? &points[selection_idx] : NULL;
+    PricePoint *selected_point = &points[selection_idx_sz];
     int chart_draw_width = visible_points * candle_stride;
     if (chart_draw_width < 1) chart_draw_width = chart_width;
 
@@ -1021,19 +1029,19 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points,
         int axis_right = axis_width + chart_width - 1;
         int label_row = axis_y + 1;
 
-        PricePoint *start_pt = &points[start_idx];
-        PricePoint *end_pt = &points[start_idx + visible_points - 1];
-        int mid_idx = start_idx + visible_points / 2;
-        if (mid_idx >= count) mid_idx = count - 1;
-        if (mid_idx < start_idx) mid_idx = start_idx;
-        PricePoint *mid_pt = &points[mid_idx];
+        PricePoint *start_pt = &points[start_idx_sz];
+        PricePoint *end_pt = &points[start_idx_sz + visible_points_sz - 1];
+        size_t mid_idx_sz = start_idx_sz + visible_points_sz / 2;
+        if (mid_idx_sz >= count) mid_idx_sz = count - 1;
+        if (mid_idx_sz < start_idx_sz) mid_idx_sz = start_idx_sz;
+        PricePoint *mid_pt = &points[mid_idx_sz];
 
         struct AxisMarker {
             PricePoint *point;
             int column;
         } markers[3] = {
             { start_pt, 0 },
-            { mid_pt, mid_idx - start_idx },
+            { mid_pt, (int)(mid_idx_sz - start_idx_sz) },
             { end_pt, visible_points - 1 }
         };
 

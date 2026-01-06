@@ -33,6 +33,7 @@ SOFTWARE.
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /** Maximum number of symbols supported in the watchlist. */
 #define MAX_SYMBOLS 50
@@ -249,13 +250,13 @@ int ui_chart_hit_test_index(int mouse_x, int total_points);
  * @brief Render the candlestick chart view.
  *
  * @param[in] symbol Trading pair symbol to display.
- * @param[in] points Array of historical price points.
  * @param[in] count Number of elements in @p points.
+ * @param[in] points Array of historical price points.
  * @param[in] period Time interval label for the chart.
  * @param[in] selected_index Selected candle index within @p points.
  */
-void draw_chart(const char *restrict symbol, PricePoint *restrict points, int count,
-                Period period, int selected_index);
+void draw_chart(const char *restrict symbol, size_t count,
+                PricePoint points[count], Period period, int selected_index);
 
 /**
  * @brief Read a key press from the UI.

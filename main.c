@@ -372,7 +372,7 @@ static void run_event_loop(Period current_period[static 1],
                            int chart_cursor_idx[static 1]) {
     while (atomic_load_explicit(&running, memory_order_relaxed)) {
         if (*show_chart) {
-            draw_chart(chart_symbol, *chart_points, *chart_count, *current_period,
+            draw_chart(chart_symbol, (size_t)*chart_count, *chart_points, *current_period,
                        *chart_cursor_idx);
         } else {
             render_price_board(*selected);
