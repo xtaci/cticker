@@ -810,8 +810,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
 
 // Draw the interactive candlestick chart along with axis labels, cursor, and
 // metadata for the currently selected candle.
-void draw_chart(const char *restrict symbol, PricePoint *restrict points, int count,
-                Period period, int selected_index) {
+void draw_chart(const char *restrict symbol, PricePoint *restrict points,
+                int count, Period period, int selected_index) {
     werase(main_win);
 
     if (count == 0) {

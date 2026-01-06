@@ -113,8 +113,8 @@ static void* fetch_data_thread(void *arg) {
     return NULL;
 }
 
-static int reload_chart_data(const char *restrict symbol, Period period,
-                             PricePoint **restrict points, int *restrict count) {
+static int reload_chart_data(const char symbol[static 1], Period period,
+                             PricePoint *points[static 1], int count[static 1]) {
     /**
      * Helper that swaps in a freshly fetched candle array.
      *
@@ -148,7 +148,7 @@ static void setup_signal_handlers(void) {
  *
  * Copies directly into the shared ticker buffer under lock.
  */
-static int perform_initial_fetch(const Config *config) {
+static int perform_initial_fetch(const Config config[static 1]) {
     pthread_mutex_lock(&data_mutex);
     for (int i = 0; i < config->symbol_count; i++) {
         fetch_ticker_data(config->symbols[i], &global_tickers[i]);
@@ -162,7 +162,7 @@ static int perform_initial_fetch(const Config *config) {
  *
  * @return 0 on success, -1 on failure.
  */
-static int init_runtime(Config *restrict config, pthread_t *restrict fetch_thread) {
+static int init_runtime(Config config[static 1], pthread_t fetch_thread[static 1]) {
     if (load_config(config) != 0) {
         fprintf(stderr, "Failed to load configuration\n");
         return -1;
@@ -229,8 +229,10 @@ static void render_price_board(int selected) {
  * @return true on success (chart ready), false on failure.
  */
 static bool open_chart_for_selection(int selected, Period current_period,
-                                     PricePoint **restrict chart_points, int *restrict chart_count,
-                                     char *restrict chart_symbol, int *restrict chart_cursor_idx) {
+                                     PricePoint *chart_points[static 1],
+                                     int chart_count[static 1],
+                                     char chart_symbol[static 1],
+                                     int chart_cursor_idx[static 1]) {
     pthread_mutex_lock(&data_mutex);
     strcpy(chart_symbol, global_tickers[selected].symbol);
     pthread_mutex_unlock(&data_mutex);
@@ -247,8 +249,9 @@ static bool open_chart_for_selection(int selected, Period current_period,
 /**
  * @brief Release chart buffers and reset chart view indices.
  */
-static void reset_chart_state(PricePoint **restrict chart_points, int *restrict chart_count,
-                              int *restrict chart_cursor_idx) {
+static void reset_chart_state(PricePoint *chart_points[static 1],
+                              int chart_count[static 1],
+                              int chart_cursor_idx[static 1]) {
     if (*chart_points) {
         free(*chart_points);
         *chart_points = NULL;
@@ -257,10 +260,11 @@ static void reset_chart_state(PricePoint **restrict chart_points, int *restrict 
     *chart_cursor_idx = -1;
 }
 
-static void change_chart_period(int step, char *restrict chart_symbol,
-                                Period *restrict current_period,
-                                PricePoint **restrict chart_points, int *restrict chart_count,
-                                int *restrict chart_cursor_idx) {
+static void change_chart_period(int step, char chart_symbol[static 1],
+                                Period current_period[static 1],
+                                PricePoint *chart_points[static 1],
+                                int chart_count[static 1],
+                                int chart_cursor_idx[static 1]) {
     int old_period = *current_period;
     int next = (*current_period + step) % PERIOD_COUNT;
     if (next < 0) {
@@ -287,9 +291,12 @@ static void change_chart_period(int step, char *restrict chart_symbol,
 /**
  * @brief Handle key input while in chart mode.
  */
-static void handle_chart_input(int ch, char *restrict chart_symbol, Period *restrict current_period,
-                               PricePoint **restrict chart_points, int *restrict chart_count,
-                               int *restrict chart_cursor_idx, bool *restrict show_chart) {
+static void handle_chart_input(int ch, char chart_symbol[static 1],
+                               Period current_period[static 1],
+                               PricePoint *chart_points[static 1],
+                               int chart_count[static 1],
+                               int chart_cursor_idx[static 1],
+                               bool show_chart[static 1]) {
     switch (ch) {
         case ' ': {
             change_chart_period(1, chart_symbol, current_period, chart_points, chart_count,
@@ -320,10 +327,11 @@ static void handle_chart_input(int ch, char *restrict chart_symbol, Period *rest
 /**
  * @brief Handle key input while on the price board.
  */
-static void handle_price_board_input(int ch, int *restrict selected, Period current_period,
-                                     bool *restrict show_chart, PricePoint **restrict chart_points,
-                                     int *restrict chart_count, char *restrict chart_symbol,
-                                     int *restrict chart_cursor_idx) {
+static void handle_price_board_input(int ch, int selected[static 1], Period current_period,
+                                     bool show_chart[static 1],
+                                     PricePoint *chart_points[static 1],
+                                     int chart_count[static 1], char chart_symbol[static 1],
+                                     int chart_cursor_idx[static 1]) {
     switch (ch) {
         case KEY_UP:
             if (*selected > 0) {
@@ -355,10 +363,13 @@ static void handle_price_board_input(int ch, int *restrict selected, Period curr
 /**
  * @brief Main UI loop dispatching draw/input for board vs chart.
  */
-static void run_event_loop(Period *restrict current_period, bool *restrict show_chart,
-                           int *restrict selected, char *restrict chart_symbol,
-                           PricePoint **restrict chart_points, int *restrict chart_count,
-                           int *restrict chart_cursor_idx) {
+static void run_event_loop(Period current_period[static 1],
+                           bool show_chart[static 1],
+                           int selected[static 1],
+                           char chart_symbol[static 1],
+                           PricePoint *chart_points[static 1],
+                           int chart_count[static 1],
+                           int chart_cursor_idx[static 1]) {
     while (atomic_load_explicit(&running, memory_order_relaxed)) {
         if (*show_chart) {
             draw_chart(chart_symbol, *chart_points, *chart_count, *current_period,

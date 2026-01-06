@@ -57,7 +57,7 @@ static const char* get_home_dir(void) {
  *
  * @note This mutates the input string; callers should pass a mutable buffer.
  */
-static char* trim_whitespace(char *str) {
+static char* trim_whitespace(char str[static 1]) {
     char *end;
     
     // Trim leading space
@@ -79,7 +79,7 @@ static char* trim_whitespace(char *str) {
  * On first run (no config file present), creates a default config file and
  * returns success.
  */
-int load_config(Config *config) {
+int load_config(Config config[static 1]) {
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "%s/%s", get_home_dir(), CONFIG_FILE);
     
@@ -119,7 +119,7 @@ int load_config(Config *config) {
  *
  * Overwrites the file; the config is intentionally simple and human-editable.
  */
-int save_config(const Config *config) {
+int save_config(const Config config[static 1]) {
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "%s/%s", get_home_dir(), CONFIG_FILE);
     
