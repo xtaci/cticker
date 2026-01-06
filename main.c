@@ -197,11 +197,8 @@ static int init_runtime(Config config[static 1], pthread_t fetch_thread[static 1
 /**
  * @brief Stop the worker thread and release UI/resources.
  */
-static void shutdown_runtime(pthread_t fetch_thread, PricePoint *chart_points) {
+static void shutdown_runtime(pthread_t fetch_thread) {
     pthread_join(fetch_thread, NULL);
-    if (chart_points) {
-        free(chart_points);
-    }
     cleanup_ui();
     free(global_tickers);
 }
@@ -363,19 +360,21 @@ static void handle_price_board_input(int ch, int selected[static 1], Period curr
 /**
  * @brief Main UI loop dispatching draw/input for board vs chart.
  */
-static void run_event_loop(Period current_period[static 1],
-                           bool show_chart[static 1],
-                           int selected[static 1],
-                           char chart_symbol[static 1],
-                           PricePoint *chart_points[static 1],
-                           int chart_count[static 1],
-                           int chart_cursor_idx[static 1]) {
+static void run_event_loop(void) {
+    PricePoint *chart_points = NULL;
+    Period current_period = PERIOD_1MIN;
+    bool show_chart = false;
+    int selected = 0;
+    char chart_symbol[MAX_SYMBOL_LEN] = {0};
+    int chart_count = 0;
+    int chart_cursor_idx = -1;
+
     while (atomic_load_explicit(&running, memory_order_relaxed)) {
-        if (*show_chart) {
-            draw_chart(chart_symbol, *chart_count, *chart_points, *current_period,
-                       *chart_cursor_idx);
+        if (show_chart) {
+            draw_chart(chart_symbol, chart_count, chart_points, current_period,
+                       chart_cursor_idx);
         } else {
-            render_price_board(*selected);
+            render_price_board(selected);
         }
 
         int ch = handle_input();
@@ -386,50 +385,50 @@ static void run_event_loop(Period current_period[static 1],
         if (ch == KEY_MOUSE) {
             MEVENT ev;
             if (getmouse(&ev) == OK) {
-                if (*show_chart) {
+                if (show_chart) {
                     if (ev.bstate & (BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED)) {
-                        handle_chart_input(27, chart_symbol, current_period, chart_points,
-                                           chart_count, chart_cursor_idx, show_chart);
+                        handle_chart_input(27, chart_symbol, &current_period, &chart_points,
+                                           &chart_count, &chart_cursor_idx, &show_chart);
                     } else if (ev.bstate & BUTTON4_PRESSED) {
-                        change_chart_period(-1, chart_symbol, current_period, chart_points,
-                                            chart_count, chart_cursor_idx);
+                        change_chart_period(-1, chart_symbol, &current_period, &chart_points,
+                                            &chart_count, &chart_cursor_idx);
                     } else if (ev.bstate & BUTTON5_PRESSED) {
-                        change_chart_period(1, chart_symbol, current_period, chart_points,
-                                           chart_count, chart_cursor_idx);
+                        change_chart_period(1, chart_symbol, &current_period, &chart_points,
+                                           &chart_count, &chart_cursor_idx);
                     } else if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
-                        int idx = ui_chart_hit_test_index(ev.x, *chart_count);
+                        int idx = ui_chart_hit_test_index(ev.x, chart_count);
                         if (idx >= 0) {
-                            *chart_cursor_idx = idx;
+                            chart_cursor_idx = idx;
                         }
                     }
                 } else {
                     bool changed = false;
                     if (ev.bstate & BUTTON4_PRESSED) {
-                        if (*selected > 0) {
-                            (*selected)--;
+                        if (selected > 0) {
+                            selected--;
                             changed = true;
                         }
                     } else if (ev.bstate & BUTTON5_PRESSED) {
-                        if (*selected < ticker_count - 1) {
-                            (*selected)++;
+                        if (selected < ticker_count - 1) {
+                            selected++;
                             changed = true;
                         }
                     } else if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
                         int row = ui_price_board_hit_test_row(ev.y, ticker_count);
                         if (row >= 0) {
-                            *selected = row;
-                            if (open_chart_for_selection(*selected, *current_period, chart_points,
-                                                         chart_count, chart_symbol, chart_cursor_idx)) {
-                                *show_chart = true;
+                            selected = row;
+                            if (open_chart_for_selection(selected, current_period, &chart_points,
+                                                         &chart_count, chart_symbol, &chart_cursor_idx)) {
+                                show_chart = true;
                             }
                         }
                     }
                     if (changed) {
-                        if (*selected < 0) {
-                            *selected = 0;
+                        if (selected < 0) {
+                            selected = 0;
                         }
-                        if (*selected > ticker_count - 1) {
-                            *selected = ticker_count - 1;
+                        if (selected > ticker_count - 1) {
+                            selected = ticker_count - 1;
                         }
                     }
                 }
@@ -437,14 +436,18 @@ static void run_event_loop(Period current_period[static 1],
             continue;
         }
 
-        if (*show_chart) {
-            handle_chart_input(ch, chart_symbol, current_period, chart_points,
-                               chart_count, chart_cursor_idx, show_chart);
+        if (show_chart) {
+            handle_chart_input(ch, chart_symbol, &current_period, &chart_points,
+                               &chart_count, &chart_cursor_idx, &show_chart);
         } else {
-            handle_price_board_input(ch, selected, *current_period, show_chart,
-                                     chart_points, chart_count, chart_symbol,
-                                     chart_cursor_idx);
+            handle_price_board_input(ch, &selected, current_period, &show_chart,
+                                     &chart_points, &chart_count, chart_symbol,
+                                     &chart_cursor_idx);
         }
+    }
+
+    if (chart_points) {
+        free(chart_points);
     }
 }
 
@@ -458,13 +461,6 @@ int main(int argc, char *argv[]) {
     (void)argv;
     
     Config config;
-    int selected = 0;
-    Period current_period = PERIOD_1MIN;
-    bool show_chart = false;
-    char chart_symbol[MAX_SYMBOL_LEN] = {0};
-    PricePoint *chart_points = NULL;
-    int chart_count = 0;
-    int chart_cursor_idx = -1;
     pthread_t fetch_thread;
 
     setup_signal_handlers();
@@ -479,9 +475,8 @@ int main(int argc, char *argv[]) {
      *  - Price board: select symbol and open chart (Enter)
      *  - Chart view : left/right candle cursor, space changes interval
      */
-    run_event_loop(&current_period, &show_chart, &selected, chart_symbol,
-                   &chart_points, &chart_count, &chart_cursor_idx);
+    run_event_loop();
 
-    shutdown_runtime(fetch_thread, chart_points);
+    shutdown_runtime(fetch_thread);
     return 0;
 }
