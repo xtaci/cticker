@@ -228,6 +228,24 @@ void draw_splash_screen(void);
 void draw_main_screen(TickerData *tickers, int count, int selected);
 
 /**
+ * @brief Map a mouse Y coordinate to a price board row index.
+ *
+ * @param[in] mouse_y Screen Y coordinate from ncurses mouse event.
+ * @param[in] total_rows Total ticker rows available.
+ * @return Row index within [0, total_rows), or -1 if the click was outside the list.
+ */
+int ui_price_board_hit_test_row(int mouse_y, int total_rows);
+
+/**
+ * @brief Map a mouse X coordinate to a candle index in the current chart viewport.
+ *
+ * @param[in] mouse_x Screen X coordinate from ncurses mouse event.
+ * @param[in] total_points Total candle count in the series.
+ * @return Candle index within [0, total_points), or -1 if outside the chart area.
+ */
+int ui_chart_hit_test_index(int mouse_x, int total_points);
+
+/**
  * @brief Render the candlestick chart view.
  *
  * @param[in] symbol Trading pair symbol to display.

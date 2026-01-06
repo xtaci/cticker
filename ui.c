@@ -62,6 +62,12 @@ static WINDOW *main_win = NULL;
 static bool colors_available = false;
 static double last_prices[MAX_SYMBOLS];
 static int last_visible_count = 0;
+static int price_board_view_start_y = 4;
+static int price_board_view_rows = 0;
+static int chart_view_start_x = 0;
+static int chart_view_visible_points = 0;
+static int chart_view_start_idx = 0;
+static int chart_view_stride = 1;
 /**
  * @brief Scroll offset (top index) for the main price board.
  *
@@ -88,6 +94,11 @@ static void reset_price_history(void) {
     last_visible_count = 0;
     // Reset scroll to top when the UI is initialized.
     price_board_scroll_offset = 0;
+    price_board_view_rows = 0;
+    chart_view_start_x = 0;
+    chart_view_visible_points = 0;
+    chart_view_start_idx = 0;
+    chart_view_stride = 1;
 }
 
 // Render a bottom footer bar with a contrasting background for interaction hints.
@@ -265,6 +276,10 @@ void init_ui(void) {
     // Use a 1s input timeout so the main loop can redraw periodically even
     // without user interaction (prices update in the background thread).
     timeout(1000);
+    mousemask(BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED |
+              BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED |
+              BUTTON4_PRESSED | BUTTON5_PRESSED, NULL);
+    mouseinterval(0);
     
     // Initialize colors
     colors_available = has_colors();
@@ -523,6 +538,8 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         max_board_height = 1;
     }
     int visible_rows = max_board_height;
+    price_board_view_start_y = board_start_y;
+    price_board_view_rows = visible_rows;
 
     bool show_high = (COLS > HIGH_COL + 10);
     bool show_low = (COLS > LOW_COL + 10);
@@ -773,7 +790,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         mvwaddch(main_win, board_start_y + visible_rows - 1, 0, ACS_DARROW);
     }
 
-    draw_footer_bar("KEYS: UP/DOWN NAVIGATE/SCROLL | ENTER: VIEW CHART | Q: QUIT");
+    draw_footer_bar("KEYS: UP/DOWN NAVIGATE | ENTER/CLICK: VIEW CHART | WHEEL: SCROLL | Q: QUIT");
     
     wrefresh(main_win);
     // Run the flicker animation after the frame is painted so the color swap is
@@ -900,6 +917,9 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
     if (max_columns < 1) max_columns = 1;
     int visible_points = count < max_columns ? count : max_columns;
     if (visible_points < 1) visible_points = (count > 0) ? 1 : 0;
+    chart_view_start_x = chart_x;
+    chart_view_visible_points = visible_points;
+    chart_view_stride = candle_stride;
 
     // Guard the selected index. Default to the newest candle.
     int selection_idx = (selected_index >= 0 && selected_index < count)
@@ -919,6 +939,7 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
         if (start_idx > max_start) start_idx = max_start;
         if (start_idx < 0) start_idx = 0;
     }
+    chart_view_start_idx = start_idx;
 
     int selected_column = -1;
     if (selection_idx >= start_idx && selection_idx < start_idx + visible_points) {
@@ -1058,9 +1079,43 @@ void draw_chart(const char *restrict symbol, PricePoint *restrict points, int co
         }
     }
 
-    draw_footer_bar("KEYS: LEFT/RIGHT MOVE CURSOR | SPACE NEXT INTERVAL | ESC/Q: BACK");
+    draw_footer_bar("KEYS: LEFT/RIGHT CURSOR | SPACE/WHEEL: CHANGE INTERVAL | LEFT CLICK: PICK CANDLE | RIGHT CLICK/ESC/Q: BACK");
 
     wrefresh(main_win);
+}
+
+int ui_price_board_hit_test_row(int mouse_y, int total_rows) {
+    if (total_rows <= 0) {
+        return -1;
+    }
+    if (mouse_y < price_board_view_start_y ||
+        mouse_y >= price_board_view_start_y + price_board_view_rows) {
+        return -1;
+    }
+    int index = price_board_scroll_offset + (mouse_y - price_board_view_start_y);
+    if (index < 0 || index >= total_rows) {
+        return -1;
+    }
+    return index;
+}
+
+int ui_chart_hit_test_index(int mouse_x, int total_points) {
+    if (total_points <= 0) {
+        return -1;
+    }
+    if (chart_view_visible_points <= 0 || chart_view_stride <= 0) {
+        return -1;
+    }
+    int chart_width_pixels = chart_view_visible_points * chart_view_stride;
+    if (mouse_x < chart_view_start_x || mouse_x >= chart_view_start_x + chart_width_pixels) {
+        return -1;
+    }
+    int col = (mouse_x - chart_view_start_x) / chart_view_stride;
+    int idx = chart_view_start_idx + col;
+    if (idx < 0 || idx >= total_points) {
+        return -1;
+    }
+    return idx;
 }
 
 // Proxy to wgetch so the UI layer can remain decoupled from ncurses details.
