@@ -71,7 +71,7 @@ static void signal_handler(int signo) {
  * Threading note: all writes to ::global_tickers happen under ::data_mutex so
  * the UI can take a consistent snapshot.
  */
-static void* fetch_data_thread(void *arg) {
+static void* thread_data_fetch(void *arg) {
     Config *config = (Config *)arg;
     int symbol_count = config->symbol_count;
 
@@ -158,7 +158,7 @@ static void setup_signal_handlers(void) {
  *
  * Copies directly into the shared ticker buffer under lock.
  */
-static int perform_initial_fetch(const Config config[static 1]) {
+static int priceboard_initial_fetch(const Config config[static 1]) {
     pthread_mutex_lock(&data_mutex);
     for (int i = 0; i < config->symbol_count; i++) {
         fetch_ticker_data(config->symbols[i], &global_tickers[i]);
@@ -193,14 +193,14 @@ static int init_runtime(Config config[static 1], pthread_t fetch_thread[static 1
     init_ui();
     draw_splash_screen();
 
-    if (pthread_create(fetch_thread, NULL, fetch_data_thread, config) != 0) {
+    if (pthread_create(fetch_thread, NULL, thread_data_fetch, config) != 0) {
         cleanup_ui();
         free(global_tickers);
         fprintf(stderr, "Failed to create fetch thread\n");
         return -1;
     }
 
-    perform_initial_fetch(config);
+    priceboard_initial_fetch(config);
     return 0;
 }
 
@@ -216,7 +216,7 @@ static void shutdown_runtime(pthread_t fetch_thread) {
 /**
  * @brief Draw the price board using a snapshot of shared tickers.
  */
-static void render_price_board(int selected) {
+static void priceboard_render(int selected) {
     pthread_mutex_lock(&data_mutex);
     TickerData *tickers_copy = malloc(ticker_count * sizeof(TickerData));
     if (tickers_copy) {
@@ -334,7 +334,7 @@ static void chart_handle_input(int ch, char chart_symbol[static 1],
 /**
  * @brief Handle key input while on the price board.
  */
-static void handle_price_board_input(int ch, int selected[static 1], Period current_period,
+static void priceboard_handle_input(int ch, int selected[static 1], Period current_period,
                                      bool show_chart[static 1],
                                      PricePoint *chart_points[static 1],
                                      int chart_count[static 1], char chart_symbol[static 1],
@@ -384,7 +384,7 @@ static void run_event_loop(void) {
             draw_chart(chart_symbol, chart_count, chart_points, current_period,
                        chart_cursor_idx);
         } else {
-            render_price_board(selected);
+            priceboard_render(selected);
         }
 
         int ch = handle_input();
@@ -450,7 +450,7 @@ static void run_event_loop(void) {
             chart_handle_input(ch, chart_symbol, &current_period, &chart_points,
                                &chart_count, &chart_cursor_idx, &show_chart);
         } else {
-            handle_price_board_input(ch, &selected, current_period, &show_chart,
+            priceboard_handle_input(ch, &selected, current_period, &show_chart,
                                      &chart_points, &chart_count, chart_symbol,
                                      &chart_cursor_idx);
         }
