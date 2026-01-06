@@ -84,16 +84,19 @@ static void* fetch_data_thread(void *arg) {
         atomic_store_explicit(&running, false, memory_order_relaxed);
         return NULL;
     }
-    
+   
+    /* Keep fetching until signaled to stop. */ 
     while (atomic_load_explicit(&running, memory_order_relaxed)) {
         memset(updated, 0, symbol_count * sizeof(bool));
-        
+       
+        /* Fetch all symbols into the scratch buffer. */ 
         for (int i = 0; i < symbol_count && atomic_load_explicit(&running, memory_order_relaxed); i++) {
             if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
                 updated[i] = true;
             }
         }
 
+        // Copy updated tickers into the shared buffer under lock.
         pthread_mutex_lock(&data_mutex);
         for (int i = 0; i < symbol_count; i++) {
             if (updated[i]) {
@@ -107,12 +110,19 @@ static void* fetch_data_thread(void *arg) {
             sleep(1);
         }
     }
-    
+
+    /* Cleanup */
     free(scratch);
     free(updated);
     return NULL;
 }
 
+
+/**
+ * @brief Helper to reload chart data for a symbol/period.
+ *
+ * On success, takes ownership of the new_points buffer.
+ */
 static int reload_chart_data(const char symbol[static 1], Period period,
                              PricePoint *points[static 1], int count[static 1]) {
     /**
@@ -225,7 +235,7 @@ static void render_price_board(int selected) {
  *
  * @return true on success (chart ready), false on failure.
  */
-static bool open_chart_for_selection(int selected, Period current_period,
+static bool open_chart(int selected, Period current_period,
                                      PricePoint *chart_points[static 1],
                                      int chart_count[static 1],
                                      char chart_symbol[static 1],
@@ -343,7 +353,7 @@ static void handle_price_board_input(int ch, int selected[static 1], Period curr
         case '\n':
         case '\r':
         case KEY_ENTER:
-            if (open_chart_for_selection(*selected, current_period, chart_points, chart_count,
+            if (open_chart(*selected, current_period, chart_points, chart_count,
                                           chart_symbol, chart_cursor_idx)) {
                 *show_chart = true;
             }
@@ -417,7 +427,7 @@ static void run_event_loop(void) {
                         int row = ui_price_board_hit_test_row(ev.y, ticker_count);
                         if (row >= 0) {
                             selected = row;
-                            if (open_chart_for_selection(selected, current_period, &chart_points,
+                            if (open_chart(selected, current_period, &chart_points,
                                                          &chart_count, chart_symbol, &chart_cursor_idx)) {
                                 show_chart = true;
                             }
