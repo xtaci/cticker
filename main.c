@@ -52,7 +52,12 @@ SOFTWARE.
 static _Atomic bool running = true;
 static pthread_mutex_t data_mutex = PTHREAD_MUTEX_INITIALIZER;
 static TickerData *global_tickers = NULL;
+static TickerData *ticker_snapshot = NULL;
 static int ticker_count = 0;
+
+static inline bool is_running(void) {
+    return atomic_load_explicit(&running, memory_order_relaxed);
+}
 
 /**
  * @brief Signal handler for clean exit.
@@ -86,11 +91,11 @@ static void* thread_data_fetch(void *arg) {
     }
    
     /* Keep fetching until signaled to stop. */ 
-    while (atomic_load_explicit(&running, memory_order_relaxed)) {
+    while (is_running()) {
         memset(updated, 0, symbol_count * sizeof(bool));
        
         /* Fetch all symbols into the scratch buffer. */ 
-        for (int i = 0; i < symbol_count && atomic_load_explicit(&running, memory_order_relaxed); i++) {
+        for (int i = 0; i < symbol_count && is_running(); i++) {
             if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
                 updated[i] = true;
             }
@@ -106,7 +111,7 @@ static void* thread_data_fetch(void *arg) {
         pthread_mutex_unlock(&data_mutex);
         
         /* Sleep for refresh interval, but wake up early if shutting down. */
-        for (int i = 0; i < REFRESH_INTERVAL && atomic_load_explicit(&running, memory_order_relaxed); i++) {
+        for (int i = 0; i < REFRESH_INTERVAL && is_running(); i++) {
             sleep(1);
         }
     }
@@ -159,11 +164,32 @@ static void setup_signal_handlers(void) {
  * Copies directly into the shared ticker buffer under lock.
  */
 static int priceboard_initial_fetch(const Config config[static 1]) {
+    /* Fetch without holding the shared lock; copy results under lock. */
+    int symbol_count = config->symbol_count;
+    TickerData *scratch = calloc(symbol_count, sizeof(TickerData));
+    bool *updated = calloc(symbol_count, sizeof(bool));
+    if (!scratch || !updated) {
+        free(scratch);
+        free(updated);
+        return -1;
+    }
+
+    for (int i = 0; i < symbol_count; i++) {
+        if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
+            updated[i] = true;
+        }
+    }
+
     pthread_mutex_lock(&data_mutex);
-    for (int i = 0; i < config->symbol_count; i++) {
-        fetch_ticker_data(config->symbols[i], &global_tickers[i]);
+    for (int i = 0; i < symbol_count; i++) {
+        if (updated[i]) {
+            global_tickers[i] = scratch[i];
+        }
     }
     pthread_mutex_unlock(&data_mutex);
+
+    free(scratch);
+    free(updated);
     return 0;
 }
 
@@ -190,12 +216,23 @@ static int init_runtime(Config config[static 1], pthread_t fetch_thread[static 1
         return -1;
     }
 
+    ticker_snapshot = malloc((size_t)ticker_count * sizeof(TickerData));
+    if (!ticker_snapshot) {
+        free(global_tickers);
+        global_tickers = NULL;
+        fprintf(stderr, "Failed to allocate memory\n");
+        return -1;
+    }
+
     init_ui();
     draw_splash_screen();
 
     if (pthread_create(fetch_thread, NULL, thread_data_fetch, config) != 0) {
         cleanup_ui();
+        free(ticker_snapshot);
+        ticker_snapshot = NULL;
         free(global_tickers);
+        global_tickers = NULL;
         fprintf(stderr, "Failed to create fetch thread\n");
         return -1;
     }
@@ -211,23 +248,24 @@ static void shutdown_runtime(pthread_t fetch_thread) {
     pthread_join(fetch_thread, NULL);
     cleanup_ui();
     free(global_tickers);
+    global_tickers = NULL;
+    free(ticker_snapshot);
+    ticker_snapshot = NULL;
 }
 
 /**
  * @brief Draw the price board using a snapshot of shared tickers.
  */
 static void priceboard_render(int selected) {
-    pthread_mutex_lock(&data_mutex);
-    TickerData *tickers_copy = malloc(ticker_count * sizeof(TickerData));
-    if (tickers_copy) {
-        memcpy(tickers_copy, global_tickers, ticker_count * sizeof(TickerData));
+    if (!ticker_snapshot) {
+        return;
     }
+
+    pthread_mutex_lock(&data_mutex);
+    memcpy(ticker_snapshot, global_tickers, (size_t)ticker_count * sizeof(TickerData));
     pthread_mutex_unlock(&data_mutex);
 
-    if (tickers_copy) {
-        draw_main_screen(tickers_copy, ticker_count, selected);
-        free(tickers_copy);
-    }
+    draw_main_screen(ticker_snapshot, ticker_count, selected);
 }
 
 /**
@@ -241,7 +279,7 @@ static bool chart_open(int selected, Period current_period,
                                      char chart_symbol[static 1],
                                      int chart_cursor_idx[static 1]) {
     pthread_mutex_lock(&data_mutex);
-    strcpy(chart_symbol, global_tickers[selected].symbol);
+    snprintf(chart_symbol, MAX_SYMBOL_LEN, "%s", global_tickers[selected].symbol);
     pthread_mutex_unlock(&data_mutex);
 
     if (chart_reload_data(chart_symbol, current_period, chart_points, chart_count) == 0) {
@@ -379,7 +417,7 @@ static void run_event_loop(void) {
     int chart_count = 0;
     int chart_cursor_idx = -1;
 
-    while (atomic_load_explicit(&running, memory_order_relaxed)) {
+    while (is_running()) {
         if (show_chart) {
             draw_chart(chart_symbol, chart_count, chart_points, current_period,
                        chart_cursor_idx);

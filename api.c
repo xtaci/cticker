@@ -122,7 +122,7 @@ int fetch_ticker_data(const char symbol[static 1], TickerData data[static 1]) {
     }
     
     /* Extract data into the caller-owned output struct. */
-    strcpy(data->symbol, symbol);
+    snprintf(data->symbol, sizeof(data->symbol), "%s", symbol);
     data->price = 0.0;
     data->change_24h = 0.0;
     data->high_price = 0.0;

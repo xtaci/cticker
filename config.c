@@ -87,9 +87,9 @@ int load_config(Config config[static 1]) {
     if (!fp) {
         /* No config file yet: create a simple default watchlist. */
         config->symbol_count = 3;
-        strcpy(config->symbols[0], "BTCUSDT");
-        strcpy(config->symbols[1], "ETHUSDT");
-        strcpy(config->symbols[2], "BNBUSDT");
+        snprintf(config->symbols[0], MAX_SYMBOL_LEN, "%s", "BTCUSDT");
+        snprintf(config->symbols[1], MAX_SYMBOL_LEN, "%s", "ETHUSDT");
+        snprintf(config->symbols[2], MAX_SYMBOL_LEN, "%s", "BNBUSDT");
         save_config(config);
         return 0;
     }
@@ -106,7 +106,7 @@ int load_config(Config config[static 1]) {
             continue;
         }
         
-        strcpy(config->symbols[config->symbol_count], trimmed);
+        snprintf(config->symbols[config->symbol_count], MAX_SYMBOL_LEN, "%s", trimmed);
         config->symbol_count++;
     }
     
