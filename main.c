@@ -53,7 +53,22 @@ static _Atomic bool running = true;
 static pthread_mutex_t data_mutex = PTHREAD_MUTEX_INITIALIZER;
 static TickerData *global_tickers = NULL;
 static TickerData *ticker_snapshot = NULL;
+static int *ticker_snapshot_order = NULL;
 static int ticker_count = 0;
+
+typedef enum {
+    SORT_FIELD_DEFAULT = 0,
+    SORT_FIELD_PRICE,
+    SORT_FIELD_CHANGE,
+} PriceboardSortField;
+
+typedef enum {
+    SORT_DIR_DESC = 0,
+    SORT_DIR_ASC,
+} PriceboardSortDirection;
+
+static PriceboardSortField current_sort_field = SORT_FIELD_DEFAULT;
+static PriceboardSortDirection current_sort_direction = SORT_DIR_DESC;
 
 /**
  * @brief Check whether the application should keep running.
@@ -84,6 +99,157 @@ static void clamp_selected(int selected[static 1]) {
         return;
     }
     *selected = clamp_int(*selected, 0, ticker_count - 1);
+}
+
+/**
+ * @brief Map the current on-screen row back to the config order index.
+ */
+static int priceboard_resolve_symbol_index(int display_index) {
+    if (!ticker_snapshot_order) {
+        return -1;
+    }
+    if (display_index < 0 || display_index >= ticker_count) {
+        return -1;
+    }
+    return ticker_snapshot_order[display_index];
+}
+
+/**
+ * @brief Extract the numeric value used for sorting.
+ */
+static double priceboard_sort_value(const TickerData row[static 1],
+                                    PriceboardSortField field) {
+    switch (field) {
+        case SORT_FIELD_PRICE:
+            return row->price;
+        case SORT_FIELD_CHANGE:
+            return row->change_24h;
+        default:
+            return 0.0;
+    }
+}
+
+/**
+ * @brief Compare two snapshot rows using the active sort rules.
+ */
+static int priceboard_compare_rows(int left, int right) {
+    const TickerData *lhs = &ticker_snapshot[left];
+    const TickerData *rhs = &ticker_snapshot[right];
+    double lhs_val = priceboard_sort_value(lhs, current_sort_field);
+    double rhs_val = priceboard_sort_value(rhs, current_sort_field);
+    int result = 0;
+    if (lhs_val < rhs_val) {
+        result = -1;
+    } else if (lhs_val > rhs_val) {
+        result = 1;
+    }
+    if (result == 0) {
+        int lhs_origin = ticker_snapshot_order[left];
+        int rhs_origin = ticker_snapshot_order[right];
+        if (lhs_origin < rhs_origin) {
+            result = -1;
+        } else if (lhs_origin > rhs_origin) {
+            result = 1;
+        }
+    }
+    if (current_sort_direction == SORT_DIR_DESC) {
+        result = -result;
+    }
+    return result;
+}
+
+/**
+ * @brief Swap snapshot rows while keeping the origin index map in sync.
+ */
+static void priceboard_swap_rows(int left, int right) {
+    if (left == right) {
+        return;
+    }
+    TickerData tmp = ticker_snapshot[left];
+    ticker_snapshot[left] = ticker_snapshot[right];
+    ticker_snapshot[right] = tmp;
+
+    int origin_tmp = ticker_snapshot_order[left];
+    ticker_snapshot_order[left] = ticker_snapshot_order[right];
+    ticker_snapshot_order[right] = origin_tmp;
+}
+
+/**
+ * @brief Apply the current sort to the local snapshot buffer.
+ */
+static void priceboard_apply_sort(void) {
+    if (!ticker_snapshot || !ticker_snapshot_order) {
+        return;
+    }
+    if (ticker_count <= 1) {
+        return;
+    }
+    if (current_sort_field == SORT_FIELD_DEFAULT) {
+        return;
+    }
+    for (int i = 1; i < ticker_count; ++i) {
+        int j = i;
+        while (j > 0 && priceboard_compare_rows(j - 1, j) > 0) {
+            priceboard_swap_rows(j - 1, j);
+            --j;
+        }
+    }
+}
+
+/**
+ * @brief Cycle between descending, ascending, and default order for a field.
+ */
+static void priceboard_cycle_sort(PriceboardSortField field) {
+    if (field == SORT_FIELD_PRICE) {
+        if (current_sort_field != SORT_FIELD_PRICE) {
+            current_sort_field = SORT_FIELD_PRICE;
+            current_sort_direction = SORT_DIR_DESC;
+        } else if (current_sort_direction == SORT_DIR_DESC) {
+            current_sort_direction = SORT_DIR_ASC;
+        } else {
+            current_sort_field = SORT_FIELD_DEFAULT;
+            current_sort_direction = SORT_DIR_DESC;
+        }
+        return;
+    }
+
+    if (field == SORT_FIELD_CHANGE) {
+        if (current_sort_field != SORT_FIELD_CHANGE) {
+            current_sort_field = SORT_FIELD_CHANGE;
+            current_sort_direction = SORT_DIR_DESC;
+        } else if (current_sort_direction == SORT_DIR_DESC) {
+            current_sort_direction = SORT_DIR_ASC;
+        } else {
+            current_sort_field = SORT_FIELD_DEFAULT;
+            current_sort_direction = SORT_DIR_DESC;
+        }
+    }
+}
+
+/**
+ * @brief Describe the next sorting outcome if the user presses F5/F6.
+ */
+static const char *priceboard_next_sort_hint(PriceboardSortField field) {
+    switch (field) {
+        case SORT_FIELD_PRICE:
+            if (current_sort_field != SORT_FIELD_PRICE) {
+                return "↓";
+            }
+            if (current_sort_direction == SORT_DIR_DESC) {
+                return "↑";
+            }
+            return "=";
+        case SORT_FIELD_CHANGE:
+            if (current_sort_field != SORT_FIELD_CHANGE) {
+                return "↓";
+            }
+            if (current_sort_direction == SORT_DIR_DESC) {
+                return "↑";
+            }
+            return "=";
+        default:
+            return "=";
+    }
 }
 
 /**
@@ -251,11 +417,23 @@ static int init_runtime(Config config[static 1], pthread_t fetch_thread[static 1
         return -1;
     }
 
+    ticker_snapshot_order = malloc((size_t)ticker_count * sizeof(int));
+    if (!ticker_snapshot_order) {
+        free(ticker_snapshot);
+        ticker_snapshot = NULL;
+        free(global_tickers);
+        global_tickers = NULL;
+        fprintf(stderr, "Failed to allocate memory\n");
+        return -1;
+    }
+
     init_ui();
     draw_splash_screen();
 
     if (pthread_create(fetch_thread, NULL, thread_data_fetch, config) != 0) {
         cleanup_ui();
+        free(ticker_snapshot_order);
+        ticker_snapshot_order = NULL;
         free(ticker_snapshot);
         ticker_snapshot = NULL;
         free(global_tickers);
@@ -276,6 +454,8 @@ static void shutdown_runtime(pthread_t fetch_thread) {
     cleanup_ui();
     free(global_tickers);
     global_tickers = NULL;
+    free(ticker_snapshot_order);
+    ticker_snapshot_order = NULL;
     free(ticker_snapshot);
     ticker_snapshot = NULL;
 }
@@ -292,7 +472,16 @@ static void priceboard_render(int selected) {
     memcpy(ticker_snapshot, global_tickers, (size_t)ticker_count * sizeof(TickerData));
     pthread_mutex_unlock(&data_mutex);
 
-    draw_main_screen(ticker_snapshot, ticker_count, selected);
+    if (ticker_snapshot_order) {
+        for (int i = 0; i < ticker_count; ++i) {
+            ticker_snapshot_order[i] = i;
+        }
+    }
+    priceboard_apply_sort();
+
+    const char *price_hint = priceboard_next_sort_hint(SORT_FIELD_PRICE);
+    const char *change_hint = priceboard_next_sort_hint(SORT_FIELD_CHANGE);
+    draw_main_screen(ticker_snapshot, ticker_count, selected, price_hint, change_hint);
 }
 
 /**
@@ -310,8 +499,14 @@ static bool chart_open(int selected, Period current_period,
         return false;
     }
 
+    int symbol_index = priceboard_resolve_symbol_index(selected);
+    if (symbol_index < 0) {
+        beep();
+        return false;
+    }
+
     pthread_mutex_lock(&data_mutex);
-    snprintf(chart_symbol, MAX_SYMBOL_LEN, "%s", global_tickers[selected].symbol);
+    snprintf(chart_symbol, MAX_SYMBOL_LEN, "%s", global_tickers[symbol_index].symbol);
     pthread_mutex_unlock(&data_mutex);
 
     if (chart_reload_data(chart_symbol, current_period, chart_points, chart_count) == 0) {
@@ -455,6 +650,12 @@ static void priceboard_handle_input(int ch, int selected[static 1], Period curre
         case 'q':
         case 'Q':
             atomic_store_explicit(&running, false, memory_order_relaxed);
+            break;
+        case KEY_F(5):
+            priceboard_cycle_sort(SORT_FIELD_PRICE);
+            break;
+        case KEY_F(6):
+            priceboard_cycle_sort(SORT_FIELD_CHANGE);
             break;
         default:
             break;

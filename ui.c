@@ -521,7 +521,8 @@ static int price_to_row(double price, double min_price, double max_price,
 
 // Draw the ticker board listing all configured symbols along with their latest
 // price, change, and a transient flicker for updated rows.
-void draw_main_screen(TickerData *tickers, int count, int selected) {
+void draw_main_screen(TickerData *tickers, int count, int selected,
+                      const char *sort_hint_price, const char *sort_hint_change) {
     werase(main_win);
     // Layout (screen coordinates):
     //   row 0: title + timestamp
@@ -792,7 +793,13 @@ void draw_main_screen(TickerData *tickers, int count, int selected) {
         mvwaddch(main_win, board_start_y + visible_rows - 1, 0, ACS_DARROW);
     }
 
-    draw_footer_bar("KEYS: UP/DOWN NAVIGATE | ENTER/CLICK: VIEW CHART | WHEEL: SCROLL | Q: QUIT");
+    const char *price_hint = (sort_hint_price && sort_hint_price[0]) ? sort_hint_price : "=";
+    const char *change_hint = (sort_hint_change && sort_hint_change[0]) ? sort_hint_change : "=";
+    char footer_text[256];
+    snprintf(footer_text, sizeof(footer_text),
+             "KEYS: ↑/↓ NAVIGATE | ENTER/CLICK: VIEW CHART | F5: SORT BY PRICE %s | F6: SORT BY CHANGE 24H %s | WHEEL: SCROLL | Q: QUIT",
+             price_hint, change_hint);
+    draw_footer_bar(footer_text);
     
     wrefresh(main_win);
     // Run the flicker animation after the frame is painted so the color swap is

@@ -225,8 +225,11 @@ void draw_splash_screen(void);
  * @param[in] tickers Array of ticker rows to display.
  * @param[in] count Number of elements in @p tickers.
  * @param[in] selected Selected row index within @p tickers.
+ * @param[in] sort_hint_price Symbol describing the next F5 sort outcome.
+ * @param[in] sort_hint_change Symbol describing the next F6 sort outcome.
  */
-void draw_main_screen(TickerData *tickers, int count, int selected);
+void draw_main_screen(TickerData *tickers, int count, int selected,
+                      const char *sort_hint_price, const char *sort_hint_change);
 
 /**
  * @brief Map a mouse Y coordinate to a price board row index.
