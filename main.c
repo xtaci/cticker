@@ -55,10 +55,16 @@ static TickerData *global_tickers = NULL;
 static TickerData *ticker_snapshot = NULL;
 static int ticker_count = 0;
 
+/**
+ * @brief Check whether the application should keep running.
+ */
 static inline bool is_running(void) {
     return atomic_load_explicit(&running, memory_order_relaxed);
 }
 
+/**
+ * @brief Clamp an integer into the inclusive range [low, high].
+ */
 static inline int clamp_int(int value, int low, int high) {
     if (value < low) {
         return low;
@@ -69,6 +75,9 @@ static inline int clamp_int(int value, int low, int high) {
     return value;
 }
 
+/**
+ * @brief Clamp the selected row index to the current ticker list bounds.
+ */
 static void clamp_selected(int selected[static 1]) {
     if (ticker_count <= 0) {
         *selected = 0;
@@ -318,6 +327,9 @@ static void chart_reset_state(PricePoint *chart_points[static 1],
                               int chart_count[static 1],
                               int chart_cursor_idx[static 1]);
 
+/**
+ * @brief Leave chart mode and release chart resources.
+ */
 static void chart_close(bool show_chart[static 1],
                         PricePoint *chart_points[static 1],
                         int chart_count[static 1],
@@ -340,6 +352,9 @@ static void chart_reset_state(PricePoint *chart_points[static 1],
     *chart_cursor_idx = -1;
 }
 
+/**
+ * @brief Normalize the chart cursor index to a valid candle index.
+ */
 static void chart_clamp_cursor(const int chart_count[static 1],
                                int chart_cursor_idx[static 1]) {
     if (*chart_count <= 0) {
@@ -446,6 +461,9 @@ static void priceboard_handle_input(int ch, int selected[static 1], Period curre
     }
 }
 
+/**
+ * @brief Handle mouse input while the chart view is active.
+ */
 static void chart_handle_mouse(const MEVENT ev,
                                char chart_symbol[static 1],
                                Period current_period[static 1],
@@ -477,6 +495,9 @@ static void chart_handle_mouse(const MEVENT ev,
     }
 }
 
+/**
+ * @brief Handle mouse input while the price board is active.
+ */
 static void priceboard_handle_mouse(const MEVENT ev,
                                     int selected[static 1],
                                     Period current_period,
