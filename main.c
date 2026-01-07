@@ -59,6 +59,24 @@ static inline bool is_running(void) {
     return atomic_load_explicit(&running, memory_order_relaxed);
 }
 
+static inline int clamp_int(int value, int low, int high) {
+    if (value < low) {
+        return low;
+    }
+    if (value > high) {
+        return high;
+    }
+    return value;
+}
+
+static void clamp_selected(int selected[static 1]) {
+    if (ticker_count <= 0) {
+        *selected = 0;
+        return;
+    }
+    *selected = clamp_int(*selected, 0, ticker_count - 1);
+}
+
 /**
  * @brief Signal handler for clean exit.
  *
@@ -278,6 +296,11 @@ static bool chart_open(int selected, Period current_period,
                                      int chart_count[static 1],
                                      char chart_symbol[static 1],
                                      int chart_cursor_idx[static 1]) {
+    if (ticker_count <= 0 || selected < 0 || selected >= ticker_count) {
+        beep();
+        return false;
+    }
+
     pthread_mutex_lock(&data_mutex);
     snprintf(chart_symbol, MAX_SYMBOL_LEN, "%s", global_tickers[selected].symbol);
     pthread_mutex_unlock(&data_mutex);
@@ -289,6 +312,18 @@ static bool chart_open(int selected, Period current_period,
 
     beep();
     return false;
+}
+
+static void chart_reset_state(PricePoint *chart_points[static 1],
+                              int chart_count[static 1],
+                              int chart_cursor_idx[static 1]);
+
+static void chart_close(bool show_chart[static 1],
+                        PricePoint *chart_points[static 1],
+                        int chart_count[static 1],
+                        int chart_cursor_idx[static 1]) {
+    *show_chart = false;
+    chart_reset_state(chart_points, chart_count, chart_cursor_idx);
 }
 
 /**
@@ -305,6 +340,21 @@ static void chart_reset_state(PricePoint *chart_points[static 1],
     *chart_cursor_idx = -1;
 }
 
+static void chart_clamp_cursor(const int chart_count[static 1],
+                               int chart_cursor_idx[static 1]) {
+    if (*chart_count <= 0) {
+        *chart_cursor_idx = -1;
+        return;
+    }
+
+    if (*chart_cursor_idx >= *chart_count) {
+        *chart_cursor_idx = *chart_count - 1;
+    }
+    if (*chart_cursor_idx < 0) {
+        *chart_cursor_idx = *chart_count - 1;
+    }
+}
+
 static void chart_change_period(int step, char chart_symbol[static 1],
                                 Period current_period[static 1],
                                 PricePoint *chart_points[static 1],
@@ -317,16 +367,7 @@ static void chart_change_period(int step, char chart_symbol[static 1],
     }
     *current_period = (Period)next;
     if (chart_reload_data(chart_symbol, *current_period, chart_points, chart_count) == 0) {
-        if (*chart_count > 0) {
-            if (*chart_cursor_idx >= *chart_count) {
-                *chart_cursor_idx = *chart_count - 1;
-            }
-            if (*chart_cursor_idx < 0) {
-                *chart_cursor_idx = *chart_count - 1;
-            }
-        } else {
-            *chart_cursor_idx = -1;
-        }
+        chart_clamp_cursor(chart_count, chart_cursor_idx);
     } else {
         *current_period = (Period)old_period;
         beep();
@@ -351,18 +392,19 @@ static void chart_handle_input(int ch, char chart_symbol[static 1],
         case KEY_LEFT:
             if (*chart_cursor_idx > 0) {
                 (*chart_cursor_idx)--;
+                chart_clamp_cursor(chart_count, chart_cursor_idx);
             }
             break;
         case KEY_RIGHT:
             if (*chart_cursor_idx >= 0 && *chart_cursor_idx < *chart_count - 1) {
                 (*chart_cursor_idx)++;
+                chart_clamp_cursor(chart_count, chart_cursor_idx);
             }
             break;
         case 'q':
         case 'Q':
         case 27:  // ESC
-            *show_chart = false;
-            chart_reset_state(chart_points, chart_count, chart_cursor_idx);
+            chart_close(show_chart, chart_points, chart_count, chart_cursor_idx);
             break;
         default:
             break;
@@ -379,18 +421,17 @@ static void priceboard_handle_input(int ch, int selected[static 1], Period curre
                                      int chart_cursor_idx[static 1]) {
     switch (ch) {
         case KEY_UP:
-            if (*selected > 0) {
-                (*selected)--;
-            }
+            (*selected)--;
+            clamp_selected(selected);
             break;
         case KEY_DOWN:
-            if (*selected < ticker_count - 1) {
-                (*selected)++;
-            }
+            (*selected)++;
+            clamp_selected(selected);
             break;
         case '\n':
         case '\r':
         case KEY_ENTER:
+            clamp_selected(selected);
             if (chart_open(*selected, current_period, chart_points, chart_count,
                                           chart_symbol, chart_cursor_idx)) {
                 *show_chart = true;
@@ -402,6 +443,70 @@ static void priceboard_handle_input(int ch, int selected[static 1], Period curre
             break;
         default:
             break;
+    }
+}
+
+static void chart_handle_mouse(const MEVENT ev,
+                               char chart_symbol[static 1],
+                               Period current_period[static 1],
+                               PricePoint *chart_points[static 1],
+                               int chart_count[static 1],
+                               int chart_cursor_idx[static 1],
+                               bool show_chart[static 1]) {
+    if (ev.bstate & (BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED)) {
+        chart_handle_input(27, chart_symbol, current_period, chart_points,
+                           chart_count, chart_cursor_idx, show_chart);
+        return;
+    }
+    if (ev.bstate & BUTTON4_PRESSED) {
+        chart_change_period(-1, chart_symbol, current_period, chart_points,
+                            chart_count, chart_cursor_idx);
+        return;
+    }
+    if (ev.bstate & BUTTON5_PRESSED) {
+        chart_change_period(1, chart_symbol, current_period, chart_points,
+                            chart_count, chart_cursor_idx);
+        return;
+    }
+    if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
+        int idx = ui_chart_hit_test_index(ev.x, *chart_count);
+        if (idx >= 0) {
+            *chart_cursor_idx = idx;
+            chart_clamp_cursor(chart_count, chart_cursor_idx);
+        }
+    }
+}
+
+static void priceboard_handle_mouse(const MEVENT ev,
+                                    int selected[static 1],
+                                    Period current_period,
+                                    bool show_chart[static 1],
+                                    PricePoint *chart_points[static 1],
+                                    int chart_count[static 1],
+                                    char chart_symbol[static 1],
+                                    int chart_cursor_idx[static 1]) {
+    if (ev.bstate & BUTTON4_PRESSED) {
+        (*selected)--;
+        clamp_selected(selected);
+        return;
+    }
+    if (ev.bstate & BUTTON5_PRESSED) {
+        (*selected)++;
+        clamp_selected(selected);
+        return;
+    }
+    if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
+        int row = ui_price_board_hit_test_row(ev.y, ticker_count);
+        if (row < 0) {
+            return;
+        }
+
+        *selected = row;
+        clamp_selected(selected);
+        if (chart_open(*selected, current_period, chart_points, chart_count,
+                       chart_symbol, chart_cursor_idx)) {
+            *show_chart = true;
+        }
     }
 }
 
@@ -422,6 +527,7 @@ static void run_event_loop(void) {
             draw_chart(chart_symbol, chart_count, chart_points, current_period,
                        chart_cursor_idx);
         } else {
+            clamp_selected(&selected);
             priceboard_render(selected);
         }
 
@@ -434,51 +540,12 @@ static void run_event_loop(void) {
             MEVENT ev;
             if (getmouse(&ev) == OK) {
                 if (show_chart) {
-                    if (ev.bstate & (BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED)) {
-                        chart_handle_input(27, chart_symbol, &current_period, &chart_points,
-                                           &chart_count, &chart_cursor_idx, &show_chart);
-                    } else if (ev.bstate & BUTTON4_PRESSED) {
-                        chart_change_period(-1, chart_symbol, &current_period, &chart_points,
-                                            &chart_count, &chart_cursor_idx);
-                    } else if (ev.bstate & BUTTON5_PRESSED) {
-                        chart_change_period(1, chart_symbol, &current_period, &chart_points,
-                                           &chart_count, &chart_cursor_idx);
-                    } else if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
-                        int idx = ui_chart_hit_test_index(ev.x, chart_count);
-                        if (idx >= 0) {
-                            chart_cursor_idx = idx;
-                        }
-                    }
+                    chart_handle_mouse(ev, chart_symbol, &current_period, &chart_points,
+                                      &chart_count, &chart_cursor_idx, &show_chart);
                 } else {
-                    bool changed = false;
-                    if (ev.bstate & BUTTON4_PRESSED) {
-                        if (selected > 0) {
-                            selected--;
-                            changed = true;
-                        }
-                    } else if (ev.bstate & BUTTON5_PRESSED) {
-                        if (selected < ticker_count - 1) {
-                            selected++;
-                            changed = true;
-                        }
-                    } else if (ev.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
-                        int row = ui_price_board_hit_test_row(ev.y, ticker_count);
-                        if (row >= 0) {
-                            selected = row;
-                            if (chart_open(selected, current_period, &chart_points,
-                                                         &chart_count, chart_symbol, &chart_cursor_idx)) {
-                                show_chart = true;
-                            }
-                        }
-                    }
-                    if (changed) {
-                        if (selected < 0) {
-                            selected = 0;
-                        }
-                        if (selected > ticker_count - 1) {
-                            selected = ticker_count - 1;
-                        }
-                    }
+                    priceboard_handle_mouse(ev, &selected, current_period, &show_chart,
+                                            &chart_points, &chart_count, chart_symbol,
+                                            &chart_cursor_idx);
                 }
             }
             continue;
