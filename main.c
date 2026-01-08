@@ -545,6 +545,7 @@ static void chart_reset_state(PricePoint *chart_points[static 1],
     }
     *chart_count = 0;
     *chart_cursor_idx = -1;
+    ui_chart_reset_viewport();
 }
 
 /**

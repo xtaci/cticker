@@ -70,6 +70,7 @@ static int chart_view_start_x = 0;
 static int chart_view_visible_points = 0;
 static int chart_view_start_idx = 0;
 static int chart_view_stride = 1;
+static int chart_view_total_points = 0;
 /**
  * @brief Scroll offset (top index) for the main price board.
  *
@@ -88,6 +89,7 @@ static void format_number_with_commas(char *buf, size_t size, double num);
 static void format_integer_with_commas(char *buf, size_t size, long long value);
 static void trim_trailing_zeros(char *buf);
 static void draw_footer_bar(const char *text);
+static void reset_chart_view_state(void);
 
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
@@ -97,10 +99,15 @@ static void reset_price_history(void) {
     // Reset scroll to top when the UI is initialized.
     price_board_scroll_offset = 0;
     price_board_view_rows = 0;
+    reset_chart_view_state();
+}
+
+static void reset_chart_view_state(void) {
     chart_view_start_x = 0;
     chart_view_visible_points = 0;
     chart_view_start_idx = 0;
     chart_view_stride = 1;
+    chart_view_total_points = 0;
 }
 
 // Render a bottom footer bar with a contrasting background for interaction hints.
@@ -322,6 +329,10 @@ void cleanup_ui(void) {
         delwin(main_win);
     }
     endwin();
+}
+
+void ui_chart_reset_viewport(void) {
+    reset_chart_view_state();
 }
 
 /**
@@ -928,6 +939,9 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     if (visible_points < 1) {
         visible_points = (count > 0) ? 1 : 0;
     }
+    int max_start = (count > visible_points) ? (count - visible_points) : 0;
+    bool viewport_changed = (chart_view_visible_points != visible_points) ||
+                            (chart_view_total_points != count);
     chart_view_start_x = chart_x;
     chart_view_visible_points = visible_points;
     chart_view_stride = candle_stride;
@@ -938,19 +952,19 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
         : (count - 1);
     if (selection_idx < 0) selection_idx = 0;
 
-    int start_idx = 0;
-    if (visible_points < count) {
-        start_idx = count - visible_points;
-        if (selection_idx < start_idx) {
-            start_idx = selection_idx;
-        } else if (selection_idx >= start_idx + visible_points) {
-            start_idx = selection_idx - visible_points + 1;
-        }
-        int max_start = count - visible_points;
-        if (start_idx > max_start) start_idx = max_start;
-        if (start_idx < 0) start_idx = 0;
+    int start_idx = chart_view_start_idx;
+    if (viewport_changed) {
+        start_idx = max_start;
+    }
+    if (start_idx > max_start) start_idx = max_start;
+    if (start_idx < 0) start_idx = 0;
+    if (selection_idx < start_idx) {
+        start_idx = selection_idx;
+    } else if (selection_idx >= start_idx + visible_points) {
+        start_idx = selection_idx - visible_points + 1;
     }
     chart_view_start_idx = start_idx;
+    chart_view_total_points = count;
 
     int selected_column = -1;
     if (selection_idx >= start_idx && selection_idx < start_idx + visible_points) {

@@ -262,6 +262,11 @@ void draw_chart(const char *restrict symbol, int count,
                 PricePoint points[count], Period period, int selected_index);
 
 /**
+ * @brief Reset cached chart viewport metrics (used when leaving chart mode).
+ */
+void ui_chart_reset_viewport(void);
+
+/**
  * @brief Read a key press from the UI.
  *
  * The UI may be configured with a timeout; in that case this can return
