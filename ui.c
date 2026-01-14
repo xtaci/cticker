@@ -288,7 +288,7 @@ static void draw_info_box(int x, int y, int width, int height,
     mvwvline(main_win, y + 1, x, ACS_VLINE, height - 2);
     mvwvline(main_win, y + 1, right, ACS_VLINE, height - 2);
 
-    char open_str[32], high_str[32], low_str[32], close_str[32], current_str[32];
+    char open_str[32], high_str[32], low_str[32], close_str[32];
     char volume_str[16], quote_volume_str[16];
     char taker_buy_base_str[16], taker_buy_quote_str[16];
     if (point->open_text[0]) {
@@ -315,12 +315,6 @@ static void draw_info_box(int x, int y, int width, int height,
         format_number(close_str, sizeof(close_str), point->close);
     }
     trim_trailing_zeros(close_str);
-    if (point->close_text[0]) {
-        snprintf(current_str, sizeof(current_str), "%s", point->close_text);
-    } else {
-        format_number(current_str, sizeof(current_str), point->close);
-    }
-    trim_trailing_zeros(current_str);
     format_number(volume_str, sizeof(volume_str), point->volume);
     format_number(quote_volume_str, sizeof(quote_volume_str), point->quote_volume);
     format_number(taker_buy_base_str, sizeof(taker_buy_base_str), point->taker_buy_base_volume);
@@ -331,6 +325,7 @@ static void draw_info_box(int x, int y, int width, int height,
         : 0.0;
     char change_str[16];
     snprintf(change_str, sizeof(change_str), "%+.2f%%", change);
+    bool change_up = (point->close >= point->open);
 
     time_t ts = (time_t)point->timestamp;
     struct tm tm_buf;
@@ -349,14 +344,23 @@ static void draw_info_box(int x, int y, int width, int height,
     mvwprintw(main_win, line++, content_x, "Open : %s", open_str);
     mvwprintw(main_win, line++, content_x, "High : %s", high_str);
     mvwprintw(main_win, line++, content_x, "Low  : %s", low_str);
-    mvwprintw(main_win, line++, content_x, "Close: %s", close_str);
+    if (colors_available) {
+        int color = change_up
+            ? COLOR_PAIR(COLOR_PAIR_GREEN)
+            : COLOR_PAIR(COLOR_PAIR_RED);
+        wattron(main_win, color | A_BOLD);
+        mvwprintw(main_win, line, content_x, "Close: %s", close_str);
+        wattroff(main_win, color | A_BOLD);
+    } else {
+        mvwprintw(main_win, line, content_x, "Close: %s", close_str);
+    }
+    line++;
     mvwprintw(main_win, line++, content_x, "Vol  : %s", volume_str);
     mvwprintw(main_win, line++, content_x, "Quote Vol: %s", quote_volume_str);
     mvwprintw(main_win, line++, content_x, "Trades   : %d", point->trade_count);
     mvwprintw(main_win, line++, content_x, "Taker Buy (B): %s", taker_buy_base_str);
     mvwprintw(main_win, line++, content_x, "Taker Buy (Q): %s", taker_buy_quote_str);
 
-    bool change_up = (point->close >= point->open);
     if (colors_available) {
         int color = change_up
             ? COLOR_PAIR(COLOR_PAIR_GREEN)
@@ -366,16 +370,6 @@ static void draw_info_box(int x, int y, int width, int height,
         wattroff(main_win, color | A_BOLD);
     } else {
         mvwprintw(main_win, line, content_x, "Change: %s", change_str);
-    }
-    line++;
-
-    if (colors_available) {
-        int color = change_up ? COLOR_PAIR(COLOR_PAIR_GREEN) : COLOR_PAIR(COLOR_PAIR_RED);
-        wattron(main_win, color | A_BOLD);
-        mvwprintw(main_win, line, content_x, "Current: %s", current_str);
-        wattroff(main_win, color | A_BOLD);
-    } else {
-        mvwprintw(main_win, line, content_x, "Current: %s", current_str);
     }
 }
 
@@ -1019,7 +1013,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     if (chart_width < 1) chart_width = 1;
     int info_x = chart_x + chart_width + info_gap;
     int info_y = 1;
-    int info_height = 15;
+    int info_height = 14;
 
     double price_range = max_price - min_price;
 
@@ -1214,7 +1208,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     if (info_width >= 10 && selected_point) {
         int max_info_height = LINES - 4 - info_y;
         if (max_info_height < info_height) info_height = max_info_height;
-        const int min_info_height = 15;
+        const int min_info_height = 14;
         if (info_height < min_info_height) info_height = min_info_height;
         if (info_height >= min_info_height) {
             if (info_x + info_width >= COLS) {
