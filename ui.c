@@ -50,6 +50,7 @@ typedef enum {
     COLOR_PAIR_TITLE_BAR,
     COLOR_PAIR_FOOTER_BAR,
     COLOR_PAIR_STATUS_PANEL,
+    COLOR_PAIR_STATUS_PANEL_FETCHING,
     COLOR_PAIR_STATUS_PANEL_ALERT,
 } ColorPairId;
 
@@ -132,10 +133,15 @@ static int status_panel_pair(StatusPanelState state) {
     if (!colors_available) {
         return 0;
     }
-    if (state == STATUS_PANEL_NETWORK_ERROR) {
-        return COLOR_PAIR_STATUS_PANEL_ALERT;
+    switch (state) {
+        case STATUS_PANEL_NETWORK_ERROR:
+            return COLOR_PAIR_STATUS_PANEL_ALERT;
+        case STATUS_PANEL_FETCHING:
+            return COLOR_PAIR_STATUS_PANEL_FETCHING;
+        case STATUS_PANEL_NORMAL:
+        default:
+            return COLOR_PAIR_STATUS_PANEL;
     }
-    return COLOR_PAIR_STATUS_PANEL;
 }
 
 void ui_set_status_panel_state(StatusPanelState state) {
@@ -378,14 +384,22 @@ void init_ui(void) {
         start_color();
         short selection_bg = COLOR_BLUE;
         short footer_bg = COLOR_WHITE;
-        short status_bg = COLOR_RED;
+        short status_bg_normal = COLOR_GREEN;
+        short status_bg_fetching = COLOR_BLUE;
+        short status_bg_error = COLOR_RED;
         if (can_change_color() && COLORS >= 16) {
             short grey_index = COLORS - 1;
             short deep_red_index = COLORS - 2;
+            short deep_blue_index = COLORS - 3;
+            short deep_green_index = COLORS - 4;
             init_color(grey_index, 500, 500, 500);
             footer_bg = grey_index;
             init_color(deep_red_index, 600, 0, 0);
-            status_bg = deep_red_index;
+            status_bg_error = deep_red_index;
+            init_color(deep_blue_index, 0, 0, 600);
+            status_bg_fetching = deep_blue_index;
+            init_color(deep_green_index, 0, 400, 0);
+            status_bg_normal = deep_green_index;
         }
         init_pair(COLOR_PAIR_GREEN, COLOR_GREEN, COLOR_BLACK);
         init_pair(COLOR_PAIR_RED, COLOR_RED, COLOR_BLACK);
@@ -399,8 +413,9 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_SYMBOL_SELECTED, COLOR_YELLOW, selection_bg);
         init_pair(COLOR_PAIR_TITLE_BAR, COLOR_BLACK, COLOR_WHITE);
         init_pair(COLOR_PAIR_FOOTER_BAR, COLOR_BLACK, footer_bg);
-        init_pair(COLOR_PAIR_STATUS_PANEL, COLOR_WHITE, status_bg);
-        init_pair(COLOR_PAIR_STATUS_PANEL_ALERT, COLOR_YELLOW, status_bg);
+        init_pair(COLOR_PAIR_STATUS_PANEL, COLOR_WHITE, status_bg_normal);
+        init_pair(COLOR_PAIR_STATUS_PANEL_FETCHING, COLOR_WHITE, status_bg_fetching);
+        init_pair(COLOR_PAIR_STATUS_PANEL_ALERT, COLOR_YELLOW, status_bg_error);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
