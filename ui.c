@@ -808,7 +808,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected,
     const char *change_hint = (sort_hint_change && sort_hint_change[0]) ? sort_hint_change : "=";
     char footer_text[256];
     snprintf(footer_text, sizeof(footer_text),
-             "KEYS: ↑/↓ NAVIGATE | ENTER/CLICK: VIEW CHART | F5: SORT BY PRICE %s | F6: SORT BY CHANGE 24H %s | WHEEL: SCROLL | Q: QUIT",
+             "KEYS: ↑/↓ NAVIGATE | ENTER/CLICK: VIEW CHART | F5: SORT BY PRICE %s | F6: SORT BY CHANGE %s | Q: QUIT",
              price_hint, change_hint);
     draw_footer_bar(footer_text);
     
