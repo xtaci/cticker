@@ -1207,7 +1207,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
         }
     }
 
-    draw_footer_bar("KEYS: LEFT/RIGHT CURSOR | UP/DOWN OR WHEEL: CHANGE INTERVAL | LEFT CLICK: PICK CANDLE | RIGHT CLICK/ESC/Q: BACK");
+    draw_footer_bar("KEYS: ←/→ CURSOR | ↑/↓: CHANGE INTERVAL | LEFT CLICK: PICK CANDLE | RIGHT CLICK/ESC/Q: BACK");
 
     wrefresh(main_win);
 }
