@@ -279,18 +279,23 @@ static void* thread_data_fetch(void *arg) {
     if (!scratch || !updated) {
         free(scratch);
         free(updated);
+        ui_set_status_panel_state(STATUS_PANEL_NETWORK_ERROR);
         atomic_store_explicit(&running, false, memory_order_relaxed);
         return NULL;
     }
    
     /* Keep fetching until signaled to stop. */ 
     while (is_running()) {
+        ui_set_status_panel_state(STATUS_PANEL_FETCHING);
         memset(updated, 0, symbol_count * sizeof(bool));
+        bool had_failure = false;
        
         /* Fetch all symbols into the scratch buffer. */ 
         for (int i = 0; i < symbol_count && is_running(); i++) {
             if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
                 updated[i] = true;
+            } else {
+                had_failure = true;
             }
         }
 
@@ -302,6 +307,12 @@ static void* thread_data_fetch(void *arg) {
             }
         }
         pthread_mutex_unlock(&data_mutex);
+
+        if (had_failure) {
+            ui_set_status_panel_state(STATUS_PANEL_NETWORK_ERROR);
+        } else {
+            ui_set_status_panel_state(STATUS_PANEL_NORMAL);
+        }
         
         /* Sleep for refresh interval, but wake up early if shutting down. */
         for (int i = 0; i < REFRESH_INTERVAL && is_running(); i++) {
@@ -364,12 +375,17 @@ static int priceboard_initial_fetch(const Config config[static 1]) {
     if (!scratch || !updated) {
         free(scratch);
         free(updated);
+        ui_set_status_panel_state(STATUS_PANEL_NETWORK_ERROR);
         return -1;
     }
 
+    ui_set_status_panel_state(STATUS_PANEL_FETCHING);
+    bool had_failure = false;
     for (int i = 0; i < symbol_count; i++) {
         if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
             updated[i] = true;
+        } else {
+            had_failure = true;
         }
     }
 
@@ -383,6 +399,7 @@ static int priceboard_initial_fetch(const Config config[static 1]) {
 
     free(scratch);
     free(updated);
+    ui_set_status_panel_state(had_failure ? STATUS_PANEL_NETWORK_ERROR : STATUS_PANEL_NORMAL);
     return 0;
 }
 

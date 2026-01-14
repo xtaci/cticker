@@ -145,6 +145,18 @@ typedef enum {
     PERIOD_COUNT
 } Period;
 
+/**
+ * @brief Status indicators for the footer panel.
+ */
+typedef enum {
+    /** Idle state when the fetch thread is sleeping. */
+    STATUS_PANEL_NORMAL = 0,
+    /** Active network fetch in progress. */
+    STATUS_PANEL_FETCHING,
+    /** Latest fetch attempt failed due to network/API issues. */
+    STATUS_PANEL_NETWORK_ERROR,
+} StatusPanelState;
+
 /** @name Config functions */
 ///@{
 /**
@@ -265,6 +277,11 @@ void draw_chart(const char *restrict symbol, int count,
  * @brief Reset cached chart viewport metrics (used when leaving chart mode).
  */
 void ui_chart_reset_viewport(void);
+
+/**
+ * @brief Update the footer status panel state.
+ */
+void ui_set_status_panel_state(StatusPanelState state);
 
 /**
  * @brief Read a key press from the UI.

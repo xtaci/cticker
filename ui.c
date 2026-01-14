@@ -33,6 +33,7 @@ SOFTWARE.
 #include <time.h>
 #include <math.h>
 #include <locale.h>
+#include <stdatomic.h>
 #include "cticker.h"
 
 typedef enum {
@@ -48,6 +49,8 @@ typedef enum {
     COLOR_PAIR_SYMBOL_SELECTED,
     COLOR_PAIR_TITLE_BAR,
     COLOR_PAIR_FOOTER_BAR,
+    COLOR_PAIR_STATUS_PANEL,
+    COLOR_PAIR_STATUS_PANEL_ALERT,
 } ColorPairId;
 
 #define PRICE_FLICKER_DURATION_MS 500
@@ -83,6 +86,7 @@ static int chart_view_total_points = 0;
  * On every redraw we clamp/adjust it to keep the selected row visible.
  */
 static int price_board_scroll_offset = 0;
+static _Atomic StatusPanelState status_panel_state = STATUS_PANEL_NORMAL;
 
 static void format_number(char *buf, size_t size, double num);
 static void format_number_with_commas(char *buf, size_t size, double num);
@@ -90,6 +94,8 @@ static void format_integer_with_commas(char *buf, size_t size, long long value);
 static void trim_trailing_zeros(char *buf);
 static void draw_footer_bar(const char *text);
 static void reset_chart_view_state(void);
+static const char *status_panel_label(StatusPanelState state);
+static int status_panel_pair(StatusPanelState state);
 
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
@@ -110,6 +116,32 @@ static void reset_chart_view_state(void) {
     chart_view_total_points = 0;
 }
 
+static const char *status_panel_label(StatusPanelState state) {
+    switch (state) {
+        case STATUS_PANEL_FETCHING:
+            return "FETCHING DATA";
+        case STATUS_PANEL_NETWORK_ERROR:
+            return "NETWORK ERROR";
+        case STATUS_PANEL_NORMAL:
+        default:
+            return "NORMAL";
+    }
+}
+
+static int status_panel_pair(StatusPanelState state) {
+    if (!colors_available) {
+        return 0;
+    }
+    if (state == STATUS_PANEL_NETWORK_ERROR) {
+        return COLOR_PAIR_STATUS_PANEL_ALERT;
+    }
+    return COLOR_PAIR_STATUS_PANEL;
+}
+
+void ui_set_status_panel_state(StatusPanelState state) {
+    atomic_store_explicit(&status_panel_state, state, memory_order_relaxed);
+}
+
 // Render a bottom footer bar with a contrasting background for interaction hints.
 static void draw_footer_bar(const char *text) {
     if (!main_win || LINES <= 0) {
@@ -122,10 +154,27 @@ static void draw_footer_bar(const char *text) {
     }
 
     int start_x = (COLS >= 4) ? 2 : 0;
-    int text_width = COLS - start_x;
+    int panel_width = COLS / 10;
+    if (panel_width < 12) {
+        panel_width = 12;
+    }
+    if (panel_width > COLS) {
+        panel_width = COLS;
+    }
+    int panel_x = COLS - panel_width;
+    if (panel_x < start_x) {
+        panel_x = start_x;
+        panel_width = COLS - start_x;
+    }
+    if (panel_width < 0) {
+        panel_width = 0;
+    }
+
+    int text_width = panel_x - start_x - 1;
     if (text_width < 0) {
         text_width = 0;
     }
+
     if (colors_available) {
         wattron(main_win, COLOR_PAIR(COLOR_PAIR_FOOTER_BAR));
     }
@@ -135,6 +184,39 @@ static void draw_footer_bar(const char *text) {
     }
     if (colors_available) {
         wattroff(main_win, COLOR_PAIR(COLOR_PAIR_FOOTER_BAR));
+    }
+
+    StatusPanelState state = atomic_load_explicit(&status_panel_state, memory_order_relaxed);
+    const char *label = status_panel_label(state);
+    int label_len = (int)strlen(label);
+    int label_max = panel_width - 2;
+    if (label_max < 1) {
+        label_max = panel_width;
+    }
+    if (label_len > label_max) {
+        label_len = label_max;
+    }
+    int label_x = panel_x + (panel_width - label_len) / 2;
+    if (label_x < panel_x) {
+        label_x = panel_x;
+    }
+
+    if (panel_width > 0) {
+        int pair = status_panel_pair(state);
+        if (colors_available && pair > 0) {
+            wattron(main_win, COLOR_PAIR(pair) | A_BOLD);
+        } else if (colors_available) {
+            wattron(main_win, COLOR_PAIR(COLOR_PAIR_FOOTER_BAR) | A_BOLD);
+        }
+        mvwhline(main_win, footer_y, panel_x, ' ', panel_width);
+        if (label_len > 0) {
+            mvwaddnstr(main_win, footer_y, label_x, label, label_len);
+        }
+        if (colors_available && pair > 0) {
+            wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
+        } else if (colors_available) {
+            wattroff(main_win, COLOR_PAIR(COLOR_PAIR_FOOTER_BAR) | A_BOLD);
+        }
     }
 }
 
@@ -296,10 +378,14 @@ void init_ui(void) {
         start_color();
         short selection_bg = COLOR_BLUE;
         short footer_bg = COLOR_WHITE;
+        short status_bg = COLOR_RED;
         if (can_change_color() && COLORS >= 16) {
             short grey_index = COLORS - 1;
+            short deep_red_index = COLORS - 2;
             init_color(grey_index, 500, 500, 500);
             footer_bg = grey_index;
+            init_color(deep_red_index, 600, 0, 0);
+            status_bg = deep_red_index;
         }
         init_pair(COLOR_PAIR_GREEN, COLOR_GREEN, COLOR_BLACK);
         init_pair(COLOR_PAIR_RED, COLOR_RED, COLOR_BLACK);
@@ -313,6 +399,8 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_SYMBOL_SELECTED, COLOR_YELLOW, selection_bg);
         init_pair(COLOR_PAIR_TITLE_BAR, COLOR_BLACK, COLOR_WHITE);
         init_pair(COLOR_PAIR_FOOTER_BAR, COLOR_BLACK, footer_bg);
+        init_pair(COLOR_PAIR_STATUS_PANEL, COLOR_WHITE, status_bg);
+        init_pair(COLOR_PAIR_STATUS_PANEL_ALERT, COLOR_YELLOW, status_bg);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
