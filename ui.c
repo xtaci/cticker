@@ -119,7 +119,7 @@ static void reset_chart_view_state(void) {
 static const char *status_panel_label(StatusPanelState state) {
     switch (state) {
         case STATUS_PANEL_FETCHING:
-            return "FETCHING DATA";
+            return "FETCHING";
         case STATUS_PANEL_NETWORK_ERROR:
             return "NETWORK ERROR";
         case STATUS_PANEL_NORMAL:
