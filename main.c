@@ -595,11 +595,14 @@ static void chart_handle_input(int ch, char chart_symbol[static 1],
                                int chart_cursor_idx[static 1],
                                bool show_chart[static 1]) {
     switch (ch) {
-        case ' ': {
+        case KEY_UP:
+            chart_change_period(-1, chart_symbol, current_period, chart_points, chart_count,
+                                chart_cursor_idx);
+            break;
+        case KEY_DOWN:
             chart_change_period(1, chart_symbol, current_period, chart_points, chart_count,
                                 chart_cursor_idx);
             break;
-        }
         case KEY_LEFT:
             if (*chart_cursor_idx > 0) {
                 (*chart_cursor_idx)--;
@@ -811,7 +814,7 @@ int main(int argc, char *argv[]) {
      * Main loop.
      * Two UI modes:
      *  - Price board: select symbol and open chart (Enter)
-     *  - Chart view : left/right candle cursor, space changes interval
+     *  - Chart view : left/right candle cursor, up/down change interval
      */
     run_event_loop();
 

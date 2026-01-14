@@ -40,4 +40,4 @@
   - Enum: `Period` in `cticker.h`
   - Request mapping: `get_interval_params()` in `api.c`
   - Labeling: `period_label()` in `ui.c`
-  - Interaction: chart input in `main.c` (`SPACE`/mouse wheel changes period).
+  - Interaction: chart input in `main.c` (up/down arrows or mouse wheel change period).
