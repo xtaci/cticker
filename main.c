@@ -44,6 +44,7 @@ SOFTWARE.
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <time.h>
 #include <ncursesw/ncurses.h>
 #include "cticker.h"
 
@@ -603,6 +604,103 @@ static void chart_change_period(int step, char chart_symbol[static 1],
 }
 
 /**
+ * @brief Update the newest candle so it reflects the latest ticker price.
+ */
+static void chart_apply_live_price(const char symbol[static 1],
+                                   PricePoint points[static 1],
+                                   int chart_count) {
+    if (!symbol[0] || chart_count <= 0) {
+        return;
+    }
+
+    TickerData latest = {0};
+    bool found = false;
+
+    pthread_mutex_lock(&data_mutex);
+    if (global_tickers) {
+        for (int i = 0; i < ticker_count; ++i) {
+            if (strncmp(global_tickers[i].symbol, symbol, MAX_SYMBOL_LEN) == 0) {
+                latest = global_tickers[i];
+                found = true;
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&data_mutex);
+
+    if (!found) {
+        return;
+    }
+
+    double current_price = latest.price;
+    if (current_price <= 0.0) {
+        return;
+    }
+
+    PricePoint *last = &points[chart_count - 1];
+    if (current_price > last->high) {
+        last->high = current_price;
+        last->high_text[0] = '\0';
+    }
+    if (last->low == 0.0 || current_price < last->low) {
+        last->low = current_price;
+        last->low_text[0] = '\0';
+    }
+    last->close = current_price;
+    last->close_text[0] = '\0';
+}
+
+/**
+ * @brief Reload candles when the latest candle has closed, keeping selection stable.
+ */
+static void chart_refresh_if_expired(char chart_symbol[static 1],
+                                     Period current_period,
+                                     PricePoint *chart_points[static 1],
+                                     int chart_count[static 1],
+                                     int chart_cursor_idx[static 1]) {
+    if (!chart_symbol[0] || !*chart_points || *chart_count <= 0) {
+        return;
+    }
+
+    PricePoint *points = *chart_points;
+    time_t now = time(NULL);
+    PricePoint *last = &points[*chart_count - 1];
+    if (now < (time_t)last->close_time) {
+        return;
+    }
+
+    uint64_t retained_ts = 0;
+    bool retain_selection = (*chart_cursor_idx >= 0 && *chart_cursor_idx < *chart_count);
+    if (retain_selection) {
+        retained_ts = points[*chart_cursor_idx].timestamp;
+    }
+
+    if (chart_reload_data(chart_symbol, current_period, chart_points, chart_count) != 0) {
+        return;
+    }
+
+    if (!*chart_points || *chart_count <= 0) {
+        *chart_cursor_idx = -1;
+        return;
+    }
+
+    if (!retain_selection) {
+        *chart_cursor_idx = (*chart_count > 0) ? (*chart_count - 1) : -1;
+        return;
+    }
+
+    PricePoint *refreshed = *chart_points;
+    for (int i = 0; i < *chart_count; ++i) {
+        if (refreshed[i].timestamp == retained_ts) {
+            *chart_cursor_idx = i;
+            return;
+        }
+    }
+
+    *chart_cursor_idx = (*chart_count > 0) ? (*chart_count - 1) : -1;
+}
+
+/**
  * @brief Handle key input while in chart mode.
  */
 static void chart_handle_input(int ch, char chart_symbol[static 1],
@@ -767,6 +865,9 @@ static void run_event_loop(void) {
 
     while (is_running()) {
         if (show_chart) {
+            chart_refresh_if_expired(chart_symbol, current_period, &chart_points,
+                                     &chart_count, &chart_cursor_idx);
+            chart_apply_live_price(chart_symbol, chart_points, chart_count);
             draw_chart(chart_symbol, chart_count, chart_points, current_period,
                        chart_cursor_idx);
         } else {
