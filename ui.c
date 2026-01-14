@@ -745,12 +745,12 @@ void draw_main_screen(TickerData *tickers, int count, int selected,
         }
     }
 
-    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
+    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR));
     mvwhline(main_win, 0, 0, ' ', COLS);
     mvwprintw(main_win, 0, left_x, "%s", left_text);
     mvwprintw(main_win, 0, title_x, "%s", title_text);
     mvwprintw(main_win, 0, time_x, "%s", time_str);
-    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
+    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR));
     
     // Column headers and a horizontal rule to separate the board.
     wattron(main_win, COLOR_PAIR(COLOR_PAIR_HEADER));
@@ -952,10 +952,10 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
         header_x = 0;
     }
 
-    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
+    wattron(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR));
     mvwhline(main_win, 0, 0, ' ', COLS);
     mvwprintw(main_win, 0, header_x, "%s", header_text);
-    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR) | A_BOLD);
+    wattroff(main_win, COLOR_PAIR(COLOR_PAIR_TITLE_BAR));
 
     // Compute min/max for scaling the y-axis.
     double min_price = points[0].low;
