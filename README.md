@@ -4,7 +4,7 @@ A Terminal User Interface (TUI) based cryptocurrency ticker written in pure C. C
 
 <img width="1159" height="570" alt="image" src="https://github.com/user-attachments/assets/c7fc7bb6-a23f-471e-a7cc-32837e9e7799" />
 
-<img width="1171" height="565" alt="image" src="https://github.com/user-attachments/assets/9207bb2d-d2f7-4a8e-bf14-db5c070cde24" />
+<img width="1168" height="571" alt="image" src="https://github.com/user-attachments/assets/7c15982d-cf16-4c0b-b517-8625debc266f" />
 
 
 ## Features
