@@ -52,6 +52,11 @@ typedef enum {
     COLOR_PAIR_STATUS_PANEL,
     COLOR_PAIR_STATUS_PANEL_FETCHING,
     COLOR_PAIR_STATUS_PANEL_ALERT,
+    COLOR_PAIR_INFO_OPEN,
+    COLOR_PAIR_INFO_HIGH,
+    COLOR_PAIR_INFO_LOW,
+    COLOR_PAIR_INFO_CLOSE,
+    COLOR_PAIR_INFO_CURRENT,
 } ColorPairId;
 
 #define PRICE_FLICKER_DURATION_MS 500
@@ -97,6 +102,8 @@ static void draw_footer_bar(const char *text);
 static void reset_chart_view_state(void);
 static const char *status_panel_label(StatusPanelState state);
 static int status_panel_pair(StatusPanelState state);
+static void draw_current_price_box(int x, int y, int width, int height,
+                                   const PricePoint *point);
 
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
@@ -341,18 +348,27 @@ static void draw_info_box(int x, int y, int width, int height,
     int line = y + 1;
     mvwprintw(main_win, line++, content_x, "Open Time : %s", open_time_str);
     mvwprintw(main_win, line++, content_x, "Close Time: %s", close_time_str);
+    if (colors_available) {
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_INFO_OPEN) | A_BOLD);
+    }
     mvwprintw(main_win, line++, content_x, "Open : %s", open_str);
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_INFO_OPEN) | A_BOLD);
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_INFO_HIGH) | A_BOLD);
+    }
     mvwprintw(main_win, line++, content_x, "High : %s", high_str);
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_INFO_HIGH) | A_BOLD);
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_INFO_LOW) | A_BOLD);
+    }
     mvwprintw(main_win, line++, content_x, "Low  : %s", low_str);
     if (colors_available) {
-        int color = change_up
-            ? COLOR_PAIR(COLOR_PAIR_GREEN)
-            : COLOR_PAIR(COLOR_PAIR_RED);
-        wattron(main_win, color | A_BOLD);
-        mvwprintw(main_win, line, content_x, "Close: %s", close_str);
-        wattroff(main_win, color | A_BOLD);
-    } else {
-        mvwprintw(main_win, line, content_x, "Close: %s", close_str);
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_INFO_LOW) | A_BOLD);
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_INFO_CLOSE) | A_BOLD);
+    }
+    mvwprintw(main_win, line, content_x, "Close: %s", close_str);
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_INFO_CLOSE) | A_BOLD);
     }
     line++;
     mvwprintw(main_win, line++, content_x, "Vol  : %s", volume_str);
@@ -370,6 +386,46 @@ static void draw_info_box(int x, int y, int width, int height,
         wattroff(main_win, color | A_BOLD);
     } else {
         mvwprintw(main_win, line, content_x, "Change: %s", change_str);
+    }
+}
+
+static void draw_current_price_box(int x, int y, int width, int height,
+                                   const PricePoint *point) {
+    if (!point || width < 10 || height < 4) {
+        return;
+    }
+
+    int right = x + width - 1;
+    int bottom = y + height - 1;
+
+    mvwaddch(main_win, y, x, ACS_ULCORNER);
+    mvwaddch(main_win, y, right, ACS_URCORNER);
+    mvwaddch(main_win, bottom, x, ACS_LLCORNER);
+    mvwaddch(main_win, bottom, right, ACS_LRCORNER);
+    mvwhline(main_win, y, x + 1, ACS_HLINE, width - 2);
+    mvwhline(main_win, bottom, x + 1, ACS_HLINE, width - 2);
+    mvwvline(main_win, y + 1, x, ACS_VLINE, height - 2);
+    mvwvline(main_win, y + 1, right, ACS_VLINE, height - 2);
+
+    char price_str[32];
+    if (point->close_text[0]) {
+        snprintf(price_str, sizeof(price_str), "%s", point->close_text);
+    } else {
+        format_number(price_str, sizeof(price_str), point->close);
+    }
+    trim_trailing_zeros(price_str);
+
+    int content_x = x + 2;
+    int label_y = y + 1;
+    int value_y = y + 2;
+
+    mvwprintw(main_win, label_y, content_x, "Current Price:");
+    if (colors_available) {
+        wattron(main_win, COLOR_PAIR(COLOR_PAIR_INFO_CURRENT) | A_BOLD);
+    }
+    mvwprintw(main_win, value_y, content_x, "%s", price_str);
+    if (colors_available) {
+        wattroff(main_win, COLOR_PAIR(COLOR_PAIR_INFO_CURRENT) | A_BOLD);
     }
 }
 
@@ -427,6 +483,11 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_STATUS_PANEL, COLOR_WHITE, status_bg_normal);
         init_pair(COLOR_PAIR_STATUS_PANEL_FETCHING, COLOR_WHITE, status_bg_fetching);
         init_pair(COLOR_PAIR_STATUS_PANEL_ALERT, COLOR_YELLOW, status_bg_error);
+        init_pair(COLOR_PAIR_INFO_OPEN, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(COLOR_PAIR_INFO_HIGH, COLOR_GREEN, COLOR_BLACK);
+        init_pair(COLOR_PAIR_INFO_LOW, COLOR_RED, COLOR_BLACK);
+        init_pair(COLOR_PAIR_INFO_CLOSE, COLOR_CYAN, COLOR_BLACK);
+        init_pair(COLOR_PAIR_INFO_CURRENT, COLOR_MAGENTA, COLOR_BLACK);
     }
     
     main_win = newwin(LINES, COLS, 0, 0);
@@ -1119,6 +1180,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     }
 
     PricePoint *selected_point = (count > 0) ? &points[selection_idx] : NULL;
+    PricePoint *latest_point = (count > 0) ? &points[count - 1] : NULL;
     int chart_draw_width = visible_points * candle_stride;
     if (chart_draw_width < 1) chart_draw_width = chart_width;
 
@@ -1215,6 +1277,22 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
                 info_x = COLS - info_width - 1;
             }
             draw_info_box(info_x, info_y, info_width, info_height, selected_point);
+        }
+    }
+
+    if (info_width >= 10 && latest_point) {
+        int price_box_y = info_y + info_height + 1;
+        int price_box_height = 5;
+        int max_price_height = LINES - 2 - price_box_y;
+        if (max_price_height < price_box_height) {
+            price_box_height = max_price_height;
+        }
+        if (price_box_height >= 4) {
+            if (info_x + info_width >= COLS) {
+                info_x = COLS - info_width - 1;
+            }
+            draw_current_price_box(info_x, price_box_y, info_width, price_box_height,
+                                   latest_point);
         }
     }
 
