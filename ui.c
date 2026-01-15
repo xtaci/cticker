@@ -286,6 +286,11 @@ static void draw_info_box(int x, int y, int width, int height,
     int right = x + width - 1;
     int bottom = y + height - 1;
 
+    wattron(main_win, A_REVERSE);
+    for (int row = y; row <= bottom; ++row) {
+        mvwhline(main_win, row, x, ' ', width);
+    }
+
     mvwaddch(main_win, y, x, ACS_ULCORNER);
     mvwaddch(main_win, y, right, ACS_URCORNER);
     mvwaddch(main_win, bottom, x, ACS_LLCORNER);
@@ -387,6 +392,8 @@ static void draw_info_box(int x, int y, int width, int height,
     } else {
         mvwprintw(main_win, line, content_x, "Change: %s", change_str);
     }
+
+    wattroff(main_win, A_REVERSE);
 }
 
 static void draw_current_price_box(int x, int y, int width, int height,
@@ -397,6 +404,11 @@ static void draw_current_price_box(int x, int y, int width, int height,
 
     int right = x + width - 1;
     int bottom = y + height - 1;
+
+    wattron(main_win, A_REVERSE);
+    for (int row = y; row <= bottom; ++row) {
+        mvwhline(main_win, row, x, ' ', width);
+    }
 
     mvwaddch(main_win, y, x, ACS_ULCORNER);
     mvwaddch(main_win, y, right, ACS_URCORNER);
@@ -427,6 +439,8 @@ static void draw_current_price_box(int x, int y, int width, int height,
     if (colors_available) {
         wattroff(main_win, COLOR_PAIR(COLOR_PAIR_INFO_CURRENT) | A_BOLD);
     }
+
+    wattroff(main_win, A_REVERSE);
 }
 
 // Initialize ncurses and prepare the root window plus color palette.
@@ -1052,8 +1066,8 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     // Reserve room for the candle detail box while ensuring the chart keeps
     // at least one column of drawing space on narrow terminals.
     int info_gap = 2;
-    const int preferred_info_width = 36;
-    const int min_info_width = 22;
+    const int preferred_info_width = 37;
+    const int min_info_width = 23;
     int info_width = preferred_info_width;
     int max_width_share = (available_width * 2) / 3;  // keep majority for chart.
     if (info_width > max_width_share) info_width = max_width_share;
@@ -1073,7 +1087,11 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     int chart_width = available_width - info_width - info_gap;
     if (chart_width < 1) chart_width = 1;
     int info_x = chart_x + chart_width + info_gap;
-    int info_y = 1;
+    int info_right_target = COLS - info_width;
+    if (info_x < info_right_target) {
+        info_x = info_right_target;
+    }
+    int info_y = 2;
     int info_height = 14;
 
     double price_range = max_price - min_price;
@@ -1273,8 +1291,8 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
         const int min_info_height = 14;
         if (info_height < min_info_height) info_height = min_info_height;
         if (info_height >= min_info_height) {
-            if (info_x + info_width >= COLS) {
-                info_x = COLS - info_width - 1;
+            if (info_x + info_width > COLS) {
+                info_x = COLS - info_width;
             }
             draw_info_box(info_x, info_y, info_width, info_height, selected_point);
         }
@@ -1288,8 +1306,8 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
             price_box_height = max_price_height;
         }
         if (price_box_height >= 4) {
-            if (info_x + info_width >= COLS) {
-                info_x = COLS - info_width - 1;
+            if (info_x + info_width > COLS) {
+                info_x = COLS - info_width;
             }
             draw_current_price_box(info_x, price_box_y, info_width, price_box_height,
                                    latest_point);
