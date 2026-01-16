@@ -708,6 +708,56 @@ static void chart_refresh_if_expired(char chart_symbol[static 1],
 }
 
 /**
+ * @brief Force reload candles regardless of expiry, optionally following latest.
+ */
+static void chart_force_refresh(char chart_symbol[static 1],
+                                Period current_period,
+                                PricePoint *chart_points[static 1],
+                                int chart_count[static 1],
+                                int chart_cursor_idx[static 1],
+                                bool follow_latest) {
+    if (!chart_symbol[0]) {
+        return;
+    }
+
+    uint64_t retained_ts = 0;
+    bool retain_selection = (*chart_cursor_idx >= 0 && *chart_cursor_idx < *chart_count);
+    if (retain_selection) {
+        retained_ts = (*chart_points)[*chart_cursor_idx].timestamp;
+    }
+
+    if (chart_reload_data(chart_symbol, current_period, chart_points, chart_count) != 0) {
+        beep();
+        return;
+    }
+
+    if (!*chart_points || *chart_count <= 0) {
+        *chart_cursor_idx = -1;
+        return;
+    }
+
+    if (follow_latest) {
+        *chart_cursor_idx = *chart_count - 1;
+        return;
+    }
+
+    if (!retain_selection) {
+        *chart_cursor_idx = *chart_count - 1;
+        return;
+    }
+
+    PricePoint *refreshed = *chart_points;
+    for (int i = 0; i < *chart_count; ++i) {
+        if (refreshed[i].timestamp == retained_ts) {
+            *chart_cursor_idx = i;
+            return;
+        }
+    }
+
+    *chart_cursor_idx = *chart_count - 1;
+}
+
+/**
  * @brief Handle key input while in chart mode.
  */
 static void chart_handle_input(int ch, char chart_symbol[static 1],
@@ -746,6 +796,11 @@ static void chart_handle_input(int ch, char chart_symbol[static 1],
             if (*follow_latest && *chart_count > 0) {
                 *chart_cursor_idx = *chart_count - 1;
             }
+            break;
+        case 'r':
+        case 'R':
+            chart_force_refresh(chart_symbol, *current_period, chart_points,
+                                chart_count, chart_cursor_idx, *follow_latest);
             break;
         case 'q':
         case 'Q':
