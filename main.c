@@ -671,8 +671,10 @@ static void chart_refresh_if_expired(char chart_symbol[static 1],
 
     uint64_t retained_ts = 0;
     bool retain_selection = (*chart_cursor_idx >= 0 && *chart_cursor_idx < *chart_count);
+    bool was_latest = false;
     if (retain_selection) {
         retained_ts = points[*chart_cursor_idx].timestamp;
+        was_latest = (*chart_cursor_idx == *chart_count - 1);
     }
 
     if (chart_reload_data(chart_symbol, current_period, chart_points, chart_count) != 0) {
@@ -685,6 +687,11 @@ static void chart_refresh_if_expired(char chart_symbol[static 1],
     }
 
     if (!retain_selection) {
+        *chart_cursor_idx = (*chart_count > 0) ? (*chart_count - 1) : -1;
+        return;
+    }
+
+    if (was_latest) {
         *chart_cursor_idx = (*chart_count > 0) ? (*chart_count - 1) : -1;
         return;
     }
@@ -708,7 +715,8 @@ static void chart_handle_input(int ch, char chart_symbol[static 1],
                                PricePoint *chart_points[static 1],
                                int chart_count[static 1],
                                int chart_cursor_idx[static 1],
-                               bool show_chart[static 1]) {
+                               bool show_chart[static 1],
+                               bool follow_latest[static 1]) {
     switch (ch) {
         case KEY_UP:
             chart_change_period(-1, chart_symbol, current_period, chart_points, chart_count,
@@ -722,18 +730,28 @@ static void chart_handle_input(int ch, char chart_symbol[static 1],
             if (*chart_cursor_idx > 0) {
                 (*chart_cursor_idx)--;
                 chart_clamp_cursor(chart_count, chart_cursor_idx);
+                *follow_latest = false;
             }
             break;
         case KEY_RIGHT:
             if (*chart_cursor_idx >= 0 && *chart_cursor_idx < *chart_count - 1) {
                 (*chart_cursor_idx)++;
                 chart_clamp_cursor(chart_count, chart_cursor_idx);
+                *follow_latest = false;
+            }
+            break;
+        case 'f':
+        case 'F':
+            *follow_latest = !*follow_latest;
+            if (*follow_latest && *chart_count > 0) {
+                *chart_cursor_idx = *chart_count - 1;
             }
             break;
         case 'q':
         case 'Q':
         case 27:  // ESC
             chart_close(show_chart, chart_points, chart_count, chart_cursor_idx);
+            *follow_latest = true;
             break;
         default:
             break;
@@ -790,10 +808,11 @@ static void chart_handle_mouse(const MEVENT ev,
                                PricePoint *chart_points[static 1],
                                int chart_count[static 1],
                                int chart_cursor_idx[static 1],
-                               bool show_chart[static 1]) {
+                               bool show_chart[static 1],
+                               bool follow_latest[static 1]) {
     if (ev.bstate & (BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED)) {
         chart_handle_input(27, chart_symbol, current_period, chart_points,
-                           chart_count, chart_cursor_idx, show_chart);
+                           chart_count, chart_cursor_idx, show_chart, follow_latest);
         return;
     }
     if (ev.bstate & BUTTON4_PRESSED) {
@@ -811,6 +830,7 @@ static void chart_handle_mouse(const MEVENT ev,
         if (idx >= 0) {
             *chart_cursor_idx = idx;
             chart_clamp_cursor(chart_count, chart_cursor_idx);
+            *follow_latest = false;
         }
     }
 }
@@ -862,12 +882,18 @@ static void run_event_loop(void) {
     char chart_symbol[MAX_SYMBOL_LEN] = {0};
     int chart_count = 0;
     int chart_cursor_idx = -1;
+    bool chart_follow_latest = true;
 
     while (is_running()) {
         if (show_chart) {
+            bool follow_latest = chart_follow_latest ||
+                                 (chart_cursor_idx >= 0 && chart_cursor_idx == chart_count - 1);
             chart_refresh_if_expired(chart_symbol, current_period, &chart_points,
                                      &chart_count, &chart_cursor_idx);
             chart_apply_live_price(chart_symbol, chart_points, chart_count);
+            if (follow_latest && chart_count > 0) {
+                chart_cursor_idx = chart_count - 1;
+            }
             draw_chart(chart_symbol, chart_count, chart_points, current_period,
                        chart_cursor_idx);
         } else {
@@ -885,7 +911,8 @@ static void run_event_loop(void) {
             if (getmouse(&ev) == OK) {
                 if (show_chart) {
                     chart_handle_mouse(ev, chart_symbol, &current_period, &chart_points,
-                                      &chart_count, &chart_cursor_idx, &show_chart);
+                                      &chart_count, &chart_cursor_idx, &show_chart,
+                                      &chart_follow_latest);
                 } else {
                     priceboard_handle_mouse(ev, &selected, current_period, &show_chart,
                                             &chart_points, &chart_count, chart_symbol,
@@ -897,7 +924,8 @@ static void run_event_loop(void) {
 
         if (show_chart) {
             chart_handle_input(ch, chart_symbol, &current_period, &chart_points,
-                               &chart_count, &chart_cursor_idx, &show_chart);
+                               &chart_count, &chart_cursor_idx, &show_chart,
+                               &chart_follow_latest);
         } else {
             priceboard_handle_input(ch, &selected, current_period, &show_chart,
                                      &chart_points, &chart_count, chart_symbol,
