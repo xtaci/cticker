@@ -590,9 +590,11 @@ static void chart_change_period(int step, char chart_symbol[static 1],
                                 int chart_count[static 1],
                                 int chart_cursor_idx[static 1]) {
     int old_period = *current_period;
-    int next = (*current_period + step) % PERIOD_COUNT;
+    int next = (int)(*current_period) + step;
     if (next < 0) {
-        next += PERIOD_COUNT;
+        next = PERIOD_COUNT - 1;
+    } else if (next >= PERIOD_COUNT) {
+        next = 0;
     }
     *current_period = (Period)next;
     if (chart_reload_data(chart_symbol, *current_period, chart_points, chart_count) == 0) {
