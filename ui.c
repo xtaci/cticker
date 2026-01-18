@@ -36,6 +36,7 @@ SOFTWARE.
 #include <stdatomic.h>
 #include "cticker.h"
 
+// Color pair identifiers used by ncurses to style cells/sections.
 typedef enum {
     COLOR_PAIR_GREEN = 1,
     COLOR_PAIR_RED,
@@ -59,8 +60,10 @@ typedef enum {
     COLOR_PAIR_INFO_CURRENT,
 } ColorPairId;
 
+// Timing and formatting constants.
 #define PRICE_FLICKER_DURATION_MS 500
 #define PRICE_CHANGE_EPSILON 1e-9
+// Column anchors for the price board layout.
 #define PRICE_COL 18
 #define CHANGE_COL 35
 #define HIGH_COL 52
@@ -69,12 +72,17 @@ typedef enum {
 #define TRADES_COL 108
 #define QUOTE_COL 126
 
+// ncurses window for all rendering in this module.
 static WINDOW *main_win = NULL;
+// Whether terminal supports colors (set during init_ui()).
 static bool colors_available = false;
+// Last known prices used for flicker/arrow state (per visible row index).
 static double last_prices[MAX_SYMBOLS];
 static int last_visible_count = 0;
+// Price board viewport configuration (set on each draw).
 static int price_board_view_start_y = 4;
 static int price_board_view_rows = 0;
+// Chart viewport configuration (set during draw_chart()).
 static int chart_view_start_x = 0;
 static int chart_view_visible_points = 0;
 static int chart_view_start_idx = 0;
@@ -105,6 +113,7 @@ static int status_panel_pair(StatusPanelState state);
 static void draw_current_price_box(int x, int y, int width, int height,
                                    const PricePoint *point);
 
+// Clear flicker history and reset viewport defaults.
 static void reset_price_history(void) {
     for (int i = 0; i < MAX_SYMBOLS; ++i) {
         last_prices[i] = NAN;
@@ -116,6 +125,7 @@ static void reset_price_history(void) {
     reset_chart_view_state();
 }
 
+// Reset chart viewport to a neutral state (used on init and chart exit).
 static void reset_chart_view_state(void) {
     chart_view_start_x = 0;
     chart_view_visible_points = 0;
@@ -124,6 +134,7 @@ static void reset_chart_view_state(void) {
     chart_view_total_points = 0;
 }
 
+// Map status enum to a user-facing label for the footer panel.
 static const char *status_panel_label(StatusPanelState state) {
     switch (state) {
         case STATUS_PANEL_FETCHING:
@@ -136,6 +147,7 @@ static const char *status_panel_label(StatusPanelState state) {
     }
 }
 
+// Return the ncurses color pair for the footer status panel.
 static int status_panel_pair(StatusPanelState state) {
     if (!colors_available) {
         return 0;
@@ -151,6 +163,7 @@ static int status_panel_pair(StatusPanelState state) {
     }
 }
 
+// Set footer status atomically (used by fetch thread).
 void ui_set_status_panel_state(StatusPanelState state) {
     atomic_store_explicit(&status_panel_state, state, memory_order_relaxed);
 }
@@ -723,6 +736,7 @@ static int price_to_row(double price, double min_price, double max_price,
 // price, change, and a transient flicker for updated rows.
 void draw_main_screen(TickerData *tickers, int count, int selected,
                       const char *sort_hint_price, const char *sort_hint_change) {
+    // Full-frame redraw to keep layout consistent after terminal resize.
     werase(main_win);
     // Layout (screen coordinates):
     //   row 0: title + timestamp
@@ -744,6 +758,7 @@ void draw_main_screen(TickerData *tickers, int count, int selected,
     price_board_view_start_y = board_start_y;
     price_board_view_rows = visible_rows;
 
+    // Column visibility is responsive: hide columns on narrow terminals.
     bool show_high = (COLS > HIGH_COL + 10);
     bool show_low = (COLS > LOW_COL + 10);
     bool show_volume = (COLS > VOLUME_COL + 12);
@@ -1319,6 +1334,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
     wrefresh(main_win);
 }
 
+// Convert mouse Y position to a ticker row index within the visible viewport.
 int ui_price_board_hit_test_row(int mouse_y, int total_rows) {
     if (total_rows <= 0) {
         return -1;
@@ -1334,6 +1350,7 @@ int ui_price_board_hit_test_row(int mouse_y, int total_rows) {
     return index;
 }
 
+// Convert mouse X position to a candle index in the current chart viewport.
 int ui_chart_hit_test_index(int mouse_x, int total_points) {
     if (total_points <= 0) {
         return -1;
