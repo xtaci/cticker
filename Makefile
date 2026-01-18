@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -O2 -pthread
 LDFLAGS = -lcurl -ljansson -lncursesw -lm -lpthread
 
 TARGET = cticker
-SOURCES = main.c config.c api.c ui.c priceboard.c chart.c
+SOURCES = main.c config.c api.c ui.c priceboard.c chart.c runtime.c fetcher.c
 OBJECTS = $(SOURCES:.c=.o)
 
 .PHONY: all clean install

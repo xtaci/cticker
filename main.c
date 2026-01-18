@@ -41,256 +41,18 @@ SOFTWARE.
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
-#include <signal.h>
 #include <stdatomic.h>
 #include <time.h>
 #include <ncursesw/ncurses.h>
 #include "cticker.h"
 #include "chart.h"
 #include "priceboard.h"
-
-#define REFRESH_INTERVAL 5  // Refresh every 5 seconds
-
-static _Atomic bool running = true;
-static pthread_mutex_t data_mutex = PTHREAD_MUTEX_INITIALIZER;
-static TickerData *global_tickers = NULL;
-static TickerData *ticker_snapshot = NULL;
-static int *ticker_snapshot_order = NULL;
-static int ticker_count = 0;
-
-/*
- * Runtime state:
- * - global_tickers: shared latest data (protected by data_mutex).
- * - ticker_snapshot: local copy used for UI rendering.
- * - ticker_snapshot_order: index map for sorting without losing config order.
- */
-
-/**
- * @brief Check whether the application should keep running.
- */
-static inline bool is_running(void) {
-    return atomic_load_explicit(&running, memory_order_relaxed);
-}
-
-
-/**
- * @brief Signal handler for clean exit.
- *
- * Keep it minimal: just flip a flag that is checked by both threads.
- */
-static void signal_handler(int signo) {
-    if (signo == SIGINT || signo == SIGTERM) {
-        atomic_store_explicit(&running, false, memory_order_relaxed);
-    }
-}
-
-/**
- * @brief Fetch all symbols into a scratch buffer.
- */
-static void fetch_all_symbols(const Config config[static 1],
-                              TickerData scratch[static 1],
-                              bool updated[static 1],
-                              bool had_failure[static 1]) {
-    /*
-     * Fetch all symbols without holding the UI lock.
-     * The caller decides how to publish updated rows.
-     */
-    int symbol_count = config->symbol_count;
-    *had_failure = false;
-    for (int i = 0; i < symbol_count && is_running(); i++) {
-        if (fetch_ticker_data(config->symbols[i], &scratch[i]) == 0) {
-            updated[i] = true;
-        } else {
-            *had_failure = true;
-        }
-    }
-}
-
-/**
- * @brief Copy updated scratch entries into the shared ticker buffer.
- */
-static void apply_updated_tickers(const TickerData scratch[static 1],
-                                  const bool updated[static 1],
-                                  int count) {
-    /* Publish only updated rows under the mutex. */
-    pthread_mutex_lock(&data_mutex);
-    for (int i = 0; i < count; i++) {
-        if (updated[i]) {
-            global_tickers[i] = scratch[i];
-        }
-    }
-    pthread_mutex_unlock(&data_mutex);
-}
-
-/**
- * @brief Background worker that refreshes the latest prices.
- *
- * Threading note: all writes to ::global_tickers happen under ::data_mutex so
- * the UI can take a consistent snapshot.
- */
-static void* thread_data_fetch(void *arg) {
-    /*
-     * Background worker: periodically refresh latest prices and
-     * publish results to the shared ticker array.
-     */
-    Config *config = (Config *)arg;
-    int symbol_count = config->symbol_count;
-
-    /* Fetch into a scratch buffer, then copy under lock to keep UI responsive. */
-    TickerData *scratch = calloc(symbol_count, sizeof(TickerData));
-    bool *updated = calloc(symbol_count, sizeof(bool));
-    if (!scratch || !updated) {
-        free(scratch);
-        free(updated);
-        ui_set_status_panel_state(STATUS_PANEL_NETWORK_ERROR);
-        atomic_store_explicit(&running, false, memory_order_relaxed);
-        return NULL;
-    }
-   
-    /* Keep fetching until signaled to stop. */ 
-    while (is_running()) {
-        ui_set_status_panel_state(STATUS_PANEL_FETCHING);
-        memset(updated, 0, symbol_count * sizeof(bool));
-        bool had_failure = false;
-
-        fetch_all_symbols(config, scratch, updated, &had_failure);
-        apply_updated_tickers(scratch, updated, symbol_count);
-
-        ui_set_status_panel_state(had_failure ? STATUS_PANEL_NETWORK_ERROR
-                                             : STATUS_PANEL_NORMAL);
-        
-        /* Sleep for refresh interval, but wake up early if shutting down. */
-        for (int i = 0; i < REFRESH_INTERVAL && is_running(); i++) {
-            sleep(1);
-        }
-    }
-
-    /* Cleanup */
-    free(scratch);
-    free(updated);
-    return NULL;
-}
-
-
-
-/**
- * @brief Register signal handlers for graceful shutdown.
- */
-static void setup_signal_handlers(void) {
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-}
-
-/**
- * @brief Perform a synchronous fetch so the first paint has data.
- *
- * Copies directly into the shared ticker buffer under lock.
- */
-static int priceboard_initial_fetch(const Config config[static 1]) {
-    /* Initial synchronous fetch so the first paint has data. */
-    /* Fetch without holding the shared lock; copy results under lock. */
-    int symbol_count = config->symbol_count;
-    TickerData *scratch = calloc(symbol_count, sizeof(TickerData));
-    bool *updated = calloc(symbol_count, sizeof(bool));
-    if (!scratch || !updated) {
-        free(scratch);
-        free(updated);
-        ui_set_status_panel_state(STATUS_PANEL_NETWORK_ERROR);
-        return -1;
-    }
-
-    ui_set_status_panel_state(STATUS_PANEL_FETCHING);
-    bool had_failure = false;
-    fetch_all_symbols(config, scratch, updated, &had_failure);
-    apply_updated_tickers(scratch, updated, symbol_count);
-
-    free(scratch);
-    free(updated);
-    ui_set_status_panel_state(had_failure ? STATUS_PANEL_NETWORK_ERROR : STATUS_PANEL_NORMAL);
-    return 0;
-}
-
-/**
- * @brief Initialize config, UI, shared buffers, and start the fetch thread.
- *
- * @return 0 on success, -1 on failure.
- */
-static int init_runtime(Config config[static 1], pthread_t fetch_thread[static 1]) {
-    /* Initialize config, UI, shared buffers, then start fetch thread. */
-    if (load_config(config) != 0) {
-        fprintf(stderr, "Failed to load configuration\n");
-        return -1;
-    }
-
-    if (config->symbol_count == 0) {
-        fprintf(stderr, "No symbols configured\n");
-        return -1;
-    }
-
-    ticker_count = config->symbol_count;
-    global_tickers = calloc(ticker_count, sizeof(TickerData));
-    if (!global_tickers) {
-        fprintf(stderr, "Failed to allocate memory\n");
-        return -1;
-    }
-
-    ticker_snapshot = malloc((size_t)ticker_count * sizeof(TickerData));
-    if (!ticker_snapshot) {
-        free(global_tickers);
-        global_tickers = NULL;
-        fprintf(stderr, "Failed to allocate memory\n");
-        return -1;
-    }
-
-    ticker_snapshot_order = malloc((size_t)ticker_count * sizeof(int));
-    if (!ticker_snapshot_order) {
-        free(ticker_snapshot);
-        ticker_snapshot = NULL;
-        free(global_tickers);
-        global_tickers = NULL;
-        fprintf(stderr, "Failed to allocate memory\n");
-        return -1;
-    }
-
-    init_ui();
-    draw_splash_screen();
-
-    if (pthread_create(fetch_thread, NULL, thread_data_fetch, config) != 0) {
-        cleanup_ui();
-        free(ticker_snapshot_order);
-        ticker_snapshot_order = NULL;
-        free(ticker_snapshot);
-        ticker_snapshot = NULL;
-        free(global_tickers);
-        global_tickers = NULL;
-        fprintf(stderr, "Failed to create fetch thread\n");
-        return -1;
-    }
-
-    priceboard_initial_fetch(config);
-    return 0;
-}
-
-/**
- * @brief Stop the worker thread and release UI/resources.
- */
-static void shutdown_runtime(pthread_t fetch_thread) {
-    /* Join worker thread and release UI/resources. */
-    pthread_join(fetch_thread, NULL);
-    cleanup_ui();
-    free(global_tickers);
-    global_tickers = NULL;
-    free(ticker_snapshot_order);
-    ticker_snapshot_order = NULL;
-    free(ticker_snapshot);
-    ticker_snapshot = NULL;
-}
+#include "runtime.h"
 
 /**
  * @brief Main UI loop dispatching draw/input for board vs chart.
  */
-static void run_event_loop(void) {
+static void run_event_loop(RuntimeContext *runtime) {
     /* UI loop for main board and chart mode. */
     PricePoint *chart_points = NULL;
     Period current_period = PERIOD_1MIN;
@@ -304,20 +66,20 @@ static void run_event_loop(void) {
     bool exit_requested = false;
 
     PriceboardContext priceboard_ctx = {
-        .data_mutex = &data_mutex,
-        .global_tickers = global_tickers,
-        .ticker_snapshot = ticker_snapshot,
-        .ticker_snapshot_order = ticker_snapshot_order,
-        .ticker_count = &ticker_count,
+        .data_mutex = &runtime->data_mutex,
+        .global_tickers = runtime->global_tickers,
+        .ticker_snapshot = runtime->ticker_snapshot,
+        .ticker_snapshot_order = runtime->ticker_snapshot_order,
+        .ticker_count = &runtime->ticker_count,
     };
 
     ChartContext chart_ctx = {
-        .data_mutex = &data_mutex,
-        .global_tickers = global_tickers,
-        .ticker_count = &ticker_count,
+        .data_mutex = &runtime->data_mutex,
+        .global_tickers = runtime->global_tickers,
+        .ticker_count = &runtime->ticker_count,
     };
 
-    while (is_running()) {
+    while (runtime_is_running()) {
         /* Render phase. */
         if (show_chart) {
             bool follow_latest = chart_follow_latest ||
@@ -372,7 +134,7 @@ static void run_event_loop(void) {
                                                      chart_symbol, &chart_cursor_idx,
                                                      &chart_symbol_index, &chart_ctx);
             if (exit_requested) {
-                atomic_store_explicit(&running, false, memory_order_relaxed);
+                runtime_request_shutdown();
             }
         }
     }
@@ -390,13 +152,12 @@ static void run_event_loop(void) {
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
-    
-    Config config;
-    pthread_t fetch_thread;
 
-    setup_signal_handlers();
+    RuntimeContext runtime = {0};
 
-    if (init_runtime(&config, &fetch_thread) != 0) {
+    runtime_setup_signal_handlers();
+
+    if (runtime_init(&runtime) != 0) {
         return 1;
     }
 
@@ -406,8 +167,8 @@ int main(int argc, char *argv[]) {
      *  - Price board: select symbol and open chart (Enter)
      *  - Chart view : left/right candle cursor, up/down change interval
      */
-    run_event_loop();
+    run_event_loop(&runtime);
 
-    shutdown_runtime(fetch_thread);
+    runtime_shutdown(&runtime);
     return 0;
 }
