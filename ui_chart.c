@@ -404,7 +404,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
         }
         mvwhline(main_win, axis_y, axis_width, ACS_HLINE, axis_len);
         mvwaddch(main_win, axis_y, axis_width, ACS_LLCORNER);
-        int arrow_row = axis_y - 1;
+        int arrow_row = axis_y;
         int label_row = axis_y + 1;
         if (label_row < LINES - 1) {
             int ticks = chart_width / 12;
@@ -455,7 +455,7 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
                 if (print_len > 0) {
                     mvwaddnstr(main_win, label_row, label_x, time_str, print_len);
                 }
-                if (arrow_row >= chart_y && arrow_row < axis_y) {
+                if (arrow_row >= chart_y && arrow_row <= axis_y) {
                     mvwaddch(main_win, arrow_row, x, ACS_UARROW);
                 }
             }
