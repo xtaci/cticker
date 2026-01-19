@@ -29,7 +29,17 @@ SOFTWARE.
 
 #include <stdlib.h>
 #include <string.h>
-#include <ncursesw/ncurses.h>
+#if defined(__has_include)
+#  if __has_include(<ncursesw/ncurses.h>)
+#    include <ncursesw/ncurses.h>
+#  elif __has_include(<ncurses.h>)
+#    include <ncurses.h>
+#  else
+#    error "ncurses headers not found"
+#  endif
+#else
+#  include <ncurses.h>
+#endif
 #include "priceboard.h"
 
 /*

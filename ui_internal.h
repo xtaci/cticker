@@ -4,7 +4,25 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <ncursesw/ncurses.h>
+#if defined(__has_include)
+#  if __has_include(<ncursesw/ncurses.h>)
+#    include <ncursesw/ncurses.h>
+#  elif __has_include(<ncurses.h>)
+#    include <ncurses.h>
+#  else
+#    error "ncurses headers not found"
+#  endif
+#else
+#  include <ncurses.h>
+#endif
+
+#ifndef BUTTON4_PRESSED
+#define BUTTON4_PRESSED 0
+#endif
+
+#ifndef BUTTON5_PRESSED
+#define BUTTON5_PRESSED 0
+#endif
 #include "cticker.h"
 
 // Color pair identifiers used by ncurses to style UI regions.
