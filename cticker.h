@@ -168,7 +168,7 @@ typedef enum {
  * @param[out] config Configuration to populate.
  * @return 0 on success, non-zero on failure.
  */
-int load_config(Config config[static 1]);
+int load_config(Config *config);
 
 /**
  * @brief Save configuration to the user's config file.
@@ -176,7 +176,7 @@ int load_config(Config config[static 1]);
  * @param[in] config Configuration to persist.
  * @return 0 on success, non-zero on failure.
  */
-int save_config(const Config config[static 1]);
+int save_config(const Config *config);
 ///@}
 
 /** @name API functions */
@@ -190,7 +190,7 @@ int save_config(const Config config[static 1]);
  * @param[out] data Output structure to fill.
  * @return 0 on success, non-zero on failure.
  */
-int fetch_ticker_data(const char symbol[static 1], TickerData data[static 1]);
+int fetch_ticker_data(const char *symbol, TickerData *data);
 
 /**
  * @brief Fetch historical candlestick (OHLC) data for charting.
@@ -204,8 +204,8 @@ int fetch_ticker_data(const char symbol[static 1], TickerData data[static 1]);
  * @param[out] count Number of valid points stored in @p *points.
  * @return 0 on success, non-zero on failure.
  */
-int fetch_historical_data(const char symbol[static 1], Period period,
-                          PricePoint *points[static 1], int count[static 1]);
+int fetch_historical_data(const char *symbol, Period period,
+                          PricePoint **points, int *count);
 ///@}
 
 /** @name UI functions */

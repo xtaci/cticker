@@ -85,7 +85,7 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
  * - lastPrice
  * - priceChangePercent
  */
-int fetch_ticker_data(const char symbol[static 1], TickerData data[static 1]) {
+int fetch_ticker_data(const char *symbol, TickerData *data) {
     CURL *curl;
     CURLcode res;
     char url[512];
@@ -210,7 +210,7 @@ int fetch_ticker_data(const char symbol[static 1], TickerData data[static 1]) {
  * Limit is chosen to keep charts informative while avoiding overly large
  * responses (also keeps rendering and parsing fast).
  */
-static void get_interval_params(Period period, const char *interval[static 1], int limit[static 1]) {
+static void get_interval_params(Period period, const char **interval, int *limit) {
     switch (period) {
         case PERIOD_1MIN:
             *interval = "1m";
@@ -260,8 +260,8 @@ static void get_interval_params(Period period, const char *interval[static 1], i
  * - [9] taker buy base asset volume
  * - [10] taker buy quote asset volume
  */
-int fetch_historical_data(const char symbol[static 1], Period period,
-                          PricePoint *points[static 1], int count[static 1]) {
+int fetch_historical_data(const char *symbol, Period period,
+                          PricePoint **points, int *count) {
     CURL *curl;
     CURLcode res;
     char url[512];

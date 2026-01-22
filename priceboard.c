@@ -69,7 +69,7 @@ static inline int clamp_int(int value, int low, int high) {
 }
 
 // Keep the selected index within the current ticker list bounds.
-void priceboard_clamp_selected(const PriceboardContext *ctx, int selected[static 1]) {
+void priceboard_clamp_selected(const PriceboardContext *ctx, int *selected) {
     if (!ctx || !ctx->ticker_count) {
         *selected = 0;
         return;
@@ -95,7 +95,7 @@ int priceboard_resolve_symbol_index(const PriceboardContext *ctx, int display_in
 }
 
 // Extract the numeric field used by the current sort.
-static double priceboard_sort_value(const TickerData row[static 1],
+static double priceboard_sort_value(const TickerData *row,
                                     PriceboardSortField field) {
     switch (field) {
         case SORT_FIELD_PRICE:
@@ -248,14 +248,14 @@ void priceboard_render(const PriceboardContext *ctx, int selected) {
 // Handle keyboard input while price board is active.
 bool priceboard_handle_input(const PriceboardContext *ctx,
                              int ch,
-                             int selected[static 1],
+                             int *selected,
                              Period current_period,
-                             bool show_chart[static 1],
-                             PricePoint *chart_points[static 1],
-                             int chart_count[static 1],
-                             char chart_symbol[static 1],
-                             int chart_cursor_idx[static 1],
-                             int chart_symbol_index[static 1],
+                             bool *show_chart,
+                             PricePoint **chart_points,
+                             int *chart_count,
+                             char *chart_symbol,
+                             int *chart_cursor_idx,
+                             int *chart_symbol_index,
                              const ChartContext *chart_ctx) {
     switch (ch) {
         case KEY_UP:
@@ -295,14 +295,14 @@ bool priceboard_handle_input(const PriceboardContext *ctx,
 // Handle mouse input while price board is active.
 void priceboard_handle_mouse(const PriceboardContext *ctx,
                              const MEVENT ev,
-                             int selected[static 1],
+                             int *selected,
                              Period current_period,
-                             bool show_chart[static 1],
-                             PricePoint *chart_points[static 1],
-                             int chart_count[static 1],
-                             char chart_symbol[static 1],
-                             int chart_cursor_idx[static 1],
-                             int chart_symbol_index[static 1],
+                             bool *show_chart,
+                             PricePoint **chart_points,
+                             int *chart_count,
+                             char *chart_symbol,
+                             int *chart_cursor_idx,
+                             int *chart_symbol_index,
                              const ChartContext *chart_ctx) {
     if (ev.bstate & BUTTON4_PRESSED) {
         (*selected)--;

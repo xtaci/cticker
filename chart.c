@@ -58,8 +58,8 @@ SOFTWARE.
  */
 
 // Fetch a fresh candle array and swap it into the caller-owned buffer.
-static int chart_reload_data(const char symbol[static 1], Period period,
-                             PricePoint *points[static 1], int count[static 1]) {
+static int chart_reload_data(const char *symbol, Period period,
+                             PricePoint **points, int *count) {
     PricePoint *new_points = NULL;
     int new_count = 0;
     int rc = fetch_historical_data(symbol, period, &new_points, &new_count);
@@ -76,9 +76,9 @@ static int chart_reload_data(const char symbol[static 1], Period period,
 }
 
 // Release chart buffers and reset the UI viewport for chart mode.
-static void chart_reset_state(PricePoint *chart_points[static 1],
-                              int chart_count[static 1],
-                              int chart_cursor_idx[static 1]) {
+static void chart_reset_state(PricePoint **chart_points,
+                              int *chart_count,
+                              int *chart_cursor_idx) {
     if (*chart_points) {
         free(*chart_points);
         *chart_points = NULL;
@@ -89,8 +89,8 @@ static void chart_reset_state(PricePoint *chart_points[static 1],
 }
 
 // Normalize cursor index into the current candle range.
-static void chart_clamp_cursor(const int chart_count[static 1],
-                               int chart_cursor_idx[static 1]) {
+static void chart_clamp_cursor(const int *chart_count,
+                               int *chart_cursor_idx) {
     if (*chart_count <= 0) {
         *chart_cursor_idx = -1;
         return;
@@ -122,11 +122,11 @@ static int chart_restore_cursor_by_timestamp(const PricePoint *points,
 // Move chart period forward/backward and reload data.
 static void chart_change_period(const ChartContext *ctx,
                                 int step,
-                                char chart_symbol[static 1],
-                                Period current_period[static 1],
-                                PricePoint *chart_points[static 1],
-                                int chart_count[static 1],
-                                int chart_cursor_idx[static 1]) {
+                                char *chart_symbol,
+                                Period *current_period,
+                                PricePoint **chart_points,
+                                int *chart_count,
+                                int *chart_cursor_idx) {
     (void)ctx;
     int old_period = *current_period;
     int next = (int)(*current_period) + step;
@@ -148,11 +148,11 @@ static void chart_change_period(const ChartContext *ctx,
 bool chart_open(const ChartContext *ctx,
                 int symbol_index,
                 Period current_period,
-                PricePoint *chart_points[static 1],
-                int chart_count[static 1],
-                char chart_symbol[static 1],
-                int chart_cursor_idx[static 1],
-                int chart_symbol_index[static 1]) {
+                PricePoint **chart_points,
+                int *chart_count,
+                char *chart_symbol,
+                int *chart_cursor_idx,
+                int *chart_symbol_index) {
     *chart_symbol_index = -1;
     if (!ctx || !ctx->ticker_count || !ctx->global_tickers || !ctx->data_mutex) {
         beep();
@@ -178,12 +178,12 @@ bool chart_open(const ChartContext *ctx,
 }
 
 // Exit chart mode and release buffers.
-void chart_close(bool show_chart[static 1],
-                 PricePoint *chart_points[static 1],
-                 int chart_count[static 1],
-                 int chart_cursor_idx[static 1],
-                 char chart_symbol[static 1],
-                 int chart_symbol_index[static 1]) {
+void chart_close(bool *show_chart,
+                 PricePoint **chart_points,
+                 int *chart_count,
+                 int *chart_cursor_idx,
+                 char *chart_symbol,
+                 int *chart_symbol_index) {
     *show_chart = false;
     chart_symbol[0] = '\0';
     *chart_symbol_index = -1;
@@ -192,8 +192,8 @@ void chart_close(bool show_chart[static 1],
 
 // Update the latest candle to reflect live ticker price.
 void chart_apply_live_price(const ChartContext *ctx,
-                            const char symbol[static 1],
-                            PricePoint points[static 1],
+                            const char *symbol,
+                            PricePoint *points,
                             int chart_count,
                             int chart_symbol_index) {
     if (!ctx || !symbol[0] || chart_count <= 0) {
@@ -247,11 +247,11 @@ void chart_apply_live_price(const ChartContext *ctx,
 
 // Refresh candles when the last candle has closed, preserving selection.
 void chart_refresh_if_expired(const ChartContext *ctx,
-                              char chart_symbol[static 1],
+                              char *chart_symbol,
                               Period current_period,
-                              PricePoint *chart_points[static 1],
-                              int chart_count[static 1],
-                              int chart_cursor_idx[static 1]) {
+                              PricePoint **chart_points,
+                              int *chart_count,
+                              int *chart_cursor_idx) {
     (void)ctx;
     if (!chart_symbol[0] || !*chart_points || *chart_count <= 0) {
         return;
@@ -304,11 +304,11 @@ void chart_refresh_if_expired(const ChartContext *ctx,
 
 // Force a reload (manual refresh), optionally follow latest candle.
 void chart_force_refresh(const ChartContext *ctx,
-                         char chart_symbol[static 1],
+                         char *chart_symbol,
                          Period current_period,
-                         PricePoint *chart_points[static 1],
-                         int chart_count[static 1],
-                         int chart_cursor_idx[static 1],
+                         PricePoint **chart_points,
+                         int *chart_count,
+                         int *chart_cursor_idx,
                          bool follow_latest) {
     (void)ctx;
     if (!chart_symbol[0]) {
@@ -355,14 +355,14 @@ void chart_force_refresh(const ChartContext *ctx,
 // Handle keyboard input while in chart mode.
 void chart_handle_input(int ch,
                         const ChartContext *ctx,
-                        char chart_symbol[static 1],
-                        Period current_period[static 1],
-                        PricePoint *chart_points[static 1],
-                        int chart_count[static 1],
-                        int chart_cursor_idx[static 1],
-                        bool show_chart[static 1],
-                        bool follow_latest[static 1],
-                        int chart_symbol_index[static 1]) {
+                        char *chart_symbol,
+                        Period *current_period,
+                        PricePoint **chart_points,
+                        int *chart_count,
+                        int *chart_cursor_idx,
+                        bool *show_chart,
+                        bool *follow_latest,
+                        int *chart_symbol_index) {
     switch (ch) {
         case KEY_UP:
             chart_change_period(ctx, -1, chart_symbol, current_period, chart_points,
@@ -413,14 +413,14 @@ void chart_handle_input(int ch,
 // Handle mouse input while in chart mode.
 void chart_handle_mouse(const ChartContext *ctx,
                         const MEVENT ev,
-                        char chart_symbol[static 1],
-                        Period current_period[static 1],
-                        PricePoint *chart_points[static 1],
-                        int chart_count[static 1],
-                        int chart_cursor_idx[static 1],
-                        bool show_chart[static 1],
-                        bool follow_latest[static 1],
-                        int chart_symbol_index[static 1]) {
+                        char *chart_symbol,
+                        Period *current_period,
+                        PricePoint **chart_points,
+                        int *chart_count,
+                        int *chart_cursor_idx,
+                        bool *show_chart,
+                        bool *follow_latest,
+                        int *chart_symbol_index) {
     if (ev.bstate & (BUTTON3_PRESSED | BUTTON3_RELEASED | BUTTON3_CLICKED)) {
         chart_handle_input(27, ctx, chart_symbol, current_period, chart_points,
                            chart_count, chart_cursor_idx, show_chart, follow_latest,

@@ -43,10 +43,10 @@ SOFTWARE.
 #define REFRESH_INTERVAL 5
 
 // Fetch all symbols into a scratch buffer without holding the UI lock.
-static void fetch_all_symbols(const Config config[static 1],
-                              TickerData scratch[static 1],
-                              bool updated[static 1],
-                              bool had_failure[static 1]) {
+static void fetch_all_symbols(const Config *config,
+                              TickerData *scratch,
+                              bool *updated,
+                              bool *had_failure) {
     int symbol_count = config->symbol_count;
     *had_failure = false;
     for (int i = 0; i < symbol_count && runtime_is_running(); i++) {
@@ -60,8 +60,8 @@ static void fetch_all_symbols(const Config config[static 1],
 
 // Publish updated rows to the shared ticker buffer under mutex.
 static void apply_updated_tickers(RuntimeContext *ctx,
-                                  const TickerData scratch[static 1],
-                                  const bool updated[static 1]) {
+                                  const TickerData *scratch,
+                                  const bool *updated) {
     pthread_mutex_lock(&ctx->data_mutex);
     for (int i = 0; i < ctx->ticker_count; i++) {
         if (updated[i]) {
