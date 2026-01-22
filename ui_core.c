@@ -247,7 +247,7 @@ void init_ui(void) {
         init_pair(COLOR_PAIR_INFO_HIGH, COLOR_GREEN, COLOR_BLACK);
         init_pair(COLOR_PAIR_INFO_LOW, COLOR_RED, COLOR_BLACK);
         init_pair(COLOR_PAIR_INFO_CLOSE, COLOR_CYAN, COLOR_BLACK);
-        init_pair(COLOR_PAIR_INFO_CURRENT, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(COLOR_PAIR_INFO_CURRENT, COLOR_WHITE, COLOR_BLACK);
     }
 
     main_win = newwin(LINES, COLS, 0, 0);
