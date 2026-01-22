@@ -168,6 +168,7 @@ static void draw_info_box(int x, int y, int width, int height,
     wattroff(main_win, A_REVERSE);
 }
 
+// Draw the current price box below the info box.
 static void draw_current_price_box(int x, int y, int width, int height,
                                    const PricePoint *point) {
     if (!point || width < 10 || height < 4) {
