@@ -448,9 +448,14 @@ void draw_chart(const char *restrict symbol, int count, PricePoint points[count]
                 if (label_x < chart_x) {
                     label_x = chart_x;
                 }
-                int max_x = chart_x + chart_width - 1;
+                // Allow time labels to extend into the gap area (but not into
+                // the info box) so that the last timestamp displays fully.
+                int max_x = info_x - 2;
+                if (max_x < chart_x + chart_width - 1) {
+                    max_x = chart_x + chart_width - 1;
+                }
                 int print_len = (int)strlen(time_str);
-                if (label_x + print_len > max_x) {
+                if (label_x + print_len - 1 > max_x) {
                     print_len = max_x - label_x + 1;
                 }
                 if (print_len > 0) {
