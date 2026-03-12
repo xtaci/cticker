@@ -32,6 +32,8 @@ SOFTWARE.
 #include <string.h>
 #include "ui_internal.h"
 
+/* ── Internal helpers ───────────────────────────────────────────────── */
+
 // Apply thousands separators to a numeric string.
 static void insert_commas(const char *src, char *dest, size_t dest_size) {
     if (dest_size == 0) {
@@ -71,6 +73,8 @@ static void insert_commas(const char *src, char *dest, size_t dest_size) {
 
     dest[out] = '\0';
 }
+
+/* ── Public formatting API ─────────────────────────────────────────── */
 
 // Format a number with a precision that keeps small prices legible.
 void ui_format_number(char *buf, size_t size, double num) {

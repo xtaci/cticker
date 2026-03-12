@@ -1,31 +1,23 @@
 #ifndef CTICKER_UI_INTERNAL_H
 #define CTICKER_UI_INTERNAL_H
 
+/**
+ * @file ui_internal.h
+ * @brief Shared declarations for the UI layer (core, priceboard, chart, format).
+ *
+ * Only UI .c files should include this header.  Non-UI modules
+ * interact via the public APIs in cticker.h, chart.h, priceboard.h.
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#if defined(__has_include)
-#  if __has_include(<ncursesw/ncurses.h>)
-#    include <ncursesw/ncurses.h>
-#  elif __has_include(<ncurses.h>)
-#    include <ncurses.h>
-#  else
-#    error "ncurses headers not found"
-#  endif
-#else
-#  include <ncurses.h>
-#endif
-
-#ifndef BUTTON4_PRESSED
-#define BUTTON4_PRESSED 0
-#endif
-
-#ifndef BUTTON5_PRESSED
-#define BUTTON5_PRESSED 0
-#endif
+#include "ncurses_compat.h"
 #include "cticker.h"
 
-// Color pair identifiers used by ncurses to style UI regions.
+// ── Color palette identifiers ────────────────────────────────────────
+
+/** @brief ncurses color-pair IDs used by the UI. */
 typedef enum {
     COLOR_PAIR_GREEN = 1,
     COLOR_PAIR_RED,
@@ -49,25 +41,30 @@ typedef enum {
     COLOR_PAIR_INFO_CURRENT,
 } ColorPairId;
 
-// Shared ncurses state for UI modules.
+// ── Shared ncurses state ─────────────────────────────────────────────
+
+/** @brief Root ncurses window for all rendering. */
 extern WINDOW *main_win;
+/** @brief Whether the terminal supports colors. */
 extern bool colors_available;
 
-// Price board state used for hit-testing and flicker.
+// ── Price board viewport state ───────────────────────────────────────
+
 extern double last_prices[MAX_SYMBOLS];
 extern int last_visible_count;
 extern int price_board_view_start_y;
 extern int price_board_view_rows;
 extern int price_board_scroll_offset;
 
-// Chart viewport state used for hit-testing.
+// ── Chart viewport state (used for mouse hit-testing) ────────────────
+
 extern int chart_view_start_x;
 extern int chart_view_visible_points;
 extern int chart_view_start_idx;
 extern int chart_view_stride;
 extern int chart_view_total_points;
 
-// Shared helper functions across UI modules.
+// ── Shared UI helpers ────────────────────────────────────────────────
 void reset_price_history(void);
 void reset_chart_view_state(void);
 void draw_footer_bar(const char *text);

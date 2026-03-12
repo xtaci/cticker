@@ -29,18 +29,10 @@ SOFTWARE.
 
 #include <stdlib.h>
 #include <string.h>
-#if defined(__has_include)
-#  if __has_include(<ncursesw/ncurses.h>)
-#    include <ncursesw/ncurses.h>
-#  elif __has_include(<ncurses.h>)
-#    include <ncurses.h>
-#  else
-#    error "ncurses headers not found"
-#  endif
-#else
-#  include <ncurses.h>
-#endif
+#include "ncurses_compat.h"
 #include "priceboard.h"
+
+/* ── Internal state and helpers ─────────────────────────────────────── */
 
 /*
  * Priceboard module notes:
@@ -221,6 +213,8 @@ const char *priceboard_next_sort_hint(PriceboardSortField field) {
     }
 }
 
+/* ── Public API: rendering ─────────────────────────────────────────── */
+
 // Build a snapshot, apply sorting, and render the price board.
 void priceboard_render(const PriceboardContext *ctx, int selected) {
     if (!ctx || !ctx->ticker_snapshot || !ctx->ticker_count) {
@@ -244,6 +238,8 @@ void priceboard_render(const PriceboardContext *ctx, int selected) {
     draw_main_screen(ctx->ticker_snapshot, *ctx->ticker_count, selected,
                      price_hint, change_hint);
 }
+
+/* ── Public API: input handling ─────────────────────────────────────── */
 
 // Handle keyboard input while price board is active.
 bool priceboard_handle_input(const PriceboardContext *ctx,

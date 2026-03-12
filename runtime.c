@@ -40,6 +40,8 @@ SOFTWARE.
 #include "fetcher.h"
 #include "cticker.h"
 
+/* ── Shutdown signaling ─────────────────────────────────────────────── */
+
 // Global running flag shared between main/UI and fetch thread.
 static _Atomic bool running = true;
 
@@ -66,6 +68,18 @@ void runtime_request_shutdown(void) {
     atomic_store_explicit(&running, false, memory_order_relaxed);
 }
 
+/* ── Runtime lifecycle ─────────────────────────────────────────────── */
+
+// Helper: release any partially-allocated buffers on init failure.
+static void runtime_free_buffers(RuntimeContext *ctx) {
+    free(ctx->ticker_snapshot_order);
+    ctx->ticker_snapshot_order = NULL;
+    free(ctx->ticker_snapshot);
+    ctx->ticker_snapshot = NULL;
+    free(ctx->global_tickers);
+    ctx->global_tickers = NULL;
+}
+
 // Allocate buffers, initialize UI/mutex, and start fetch thread.
 int runtime_init(RuntimeContext *ctx) {
     if (!ctx) {
@@ -83,6 +97,8 @@ int runtime_init(RuntimeContext *ctx) {
     }
 
     ctx->ticker_count = ctx->config.symbol_count;
+
+    /* ── Allocate shared buffers ───────────────────────────────────── */
     ctx->global_tickers = calloc(ctx->ticker_count, sizeof(TickerData));
     if (!ctx->global_tickers) {
         fprintf(stderr, "Failed to allocate memory\n");
@@ -91,51 +107,39 @@ int runtime_init(RuntimeContext *ctx) {
 
     ctx->ticker_snapshot = malloc((size_t)ctx->ticker_count * sizeof(TickerData));
     if (!ctx->ticker_snapshot) {
-        free(ctx->global_tickers);
-        ctx->global_tickers = NULL;
         fprintf(stderr, "Failed to allocate memory\n");
-        return -1;
+        goto fail_buffers;
     }
 
     ctx->ticker_snapshot_order = malloc((size_t)ctx->ticker_count * sizeof(int));
     if (!ctx->ticker_snapshot_order) {
-        free(ctx->ticker_snapshot);
-        ctx->ticker_snapshot = NULL;
-        free(ctx->global_tickers);
-        ctx->global_tickers = NULL;
         fprintf(stderr, "Failed to allocate memory\n");
-        return -1;
+        goto fail_buffers;
     }
 
+    /* ── Initialize mutex ──────────────────────────────────────────── */
     if (pthread_mutex_init(&ctx->data_mutex, NULL) != 0) {
-        free(ctx->ticker_snapshot_order);
-        ctx->ticker_snapshot_order = NULL;
-        free(ctx->ticker_snapshot);
-        ctx->ticker_snapshot = NULL;
-        free(ctx->global_tickers);
-        ctx->global_tickers = NULL;
         fprintf(stderr, "Failed to initialize mutex\n");
-        return -1;
+        goto fail_buffers;
     }
 
+    /* ── Initialize UI and start background fetch ──────────────────── */
     init_ui();
     draw_splash_screen();
 
     if (pthread_create(&ctx->fetch_thread, NULL, fetcher_thread_main, ctx) != 0) {
+        fprintf(stderr, "Failed to create fetch thread\n");
         cleanup_ui();
         pthread_mutex_destroy(&ctx->data_mutex);
-        free(ctx->ticker_snapshot_order);
-        ctx->ticker_snapshot_order = NULL;
-        free(ctx->ticker_snapshot);
-        ctx->ticker_snapshot = NULL;
-        free(ctx->global_tickers);
-        ctx->global_tickers = NULL;
-        fprintf(stderr, "Failed to create fetch thread\n");
-        return -1;
+        goto fail_buffers;
     }
 
     fetcher_initial_fetch(ctx);
     return 0;
+
+fail_buffers:
+    runtime_free_buffers(ctx);
+    return -1;
 }
 
 // Join worker thread and release all runtime resources.
@@ -147,11 +151,6 @@ void runtime_shutdown(RuntimeContext *ctx) {
     pthread_join(ctx->fetch_thread, NULL);
     cleanup_ui();
     pthread_mutex_destroy(&ctx->data_mutex);
-    free(ctx->global_tickers);
-    ctx->global_tickers = NULL;
-    free(ctx->ticker_snapshot_order);
-    ctx->ticker_snapshot_order = NULL;
-    free(ctx->ticker_snapshot);
-    ctx->ticker_snapshot = NULL;
+    runtime_free_buffers(ctx);
     ctx->ticker_count = 0;
 }

@@ -32,6 +32,8 @@ SOFTWARE.
 #include <time.h>
 #include "ui_internal.h"
 
+/* ── Internal helpers ───────────────────────────────────────────────── */
+
 // Convert a price into a y-coordinate on the chart grid.
 static int price_to_row(double price, double min_price, double max_price,
                         int chart_height, int chart_y) {
@@ -215,6 +217,8 @@ static void draw_current_price_box(int x, int y, int width, int height,
 
     wattroff(main_win, A_REVERSE);
 }
+
+/* ── Main chart drawing routine ────────────────────────────────────── */
 
 // Draw the interactive candlestick chart along with axis labels, cursor, and
 // metadata for the currently selected candle.

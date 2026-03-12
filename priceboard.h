@@ -1,30 +1,22 @@
 #ifndef PRICEBOARD_H
 #define PRICEBOARD_H
 
+/**
+ * @file priceboard.h
+ * @brief Price board data management, sorting, and input API.
+ *
+ * The price board is the main screen showing all watched symbols.
+ * This module manages sort state, snapshot creation, and user interaction;
+ * actual ncurses rendering is in ui_priceboard.c.
+ */
+
 #include <stdbool.h>
 #include <pthread.h>
-#if defined(__has_include)
-#  if __has_include(<ncursesw/ncurses.h>)
-#    include <ncursesw/ncurses.h>
-#  elif __has_include(<ncurses.h>)
-#    include <ncurses.h>
-#  else
-#    error "ncurses headers not found"
-#  endif
-#else
-#  include <ncurses.h>
-#endif
-
-#ifndef BUTTON4_PRESSED
-#define BUTTON4_PRESSED 0
-#endif
-
-#ifndef BUTTON5_PRESSED
-#define BUTTON5_PRESSED 0
-#endif
+#include "ncurses_compat.h"
 #include "cticker.h"
 #include "chart.h"
 
+/** @brief Column sort selector for the price board. */
 typedef enum {
     /** Default order (config order). */
     SORT_FIELD_DEFAULT = 0,
@@ -34,6 +26,12 @@ typedef enum {
     SORT_FIELD_CHANGE,
 } PriceboardSortField;
 
+/**
+ * @brief Shared state needed by price board operations.
+ *
+ * Snapshot buffers are filled from global_tickers under the mutex,
+ * then sorted and rendered without holding the lock.
+ */
 typedef struct {
     /** Mutex guarding shared ticker updates. */
     pthread_mutex_t *data_mutex;
@@ -47,16 +45,30 @@ typedef struct {
     int *ticker_count;
 } PriceboardContext;
 
+/** @name Price board helpers */
+///@{
+
+/** @brief Clamp the selected index to valid bounds. */
 void priceboard_clamp_selected(const PriceboardContext *ctx, int *selected);
 
+/** @brief Map a display row back to the original config index. */
 int priceboard_resolve_symbol_index(const PriceboardContext *ctx, int display_index);
 
+/** @brief Cycle sort direction for the given field. */
 void priceboard_cycle_sort(PriceboardSortField field);
 
+/** @brief Return the arrow hint for the next sort state. */
 const char *priceboard_next_sort_hint(PriceboardSortField field);
 
+///@}
+
+/** @name Price board rendering and input */
+///@{
+
+/** @brief Build a snapshot and render the price board. */
 void priceboard_render(const PriceboardContext *ctx, int selected);
 
+/** @brief Handle keyboard input on the price board. */
 bool priceboard_handle_input(const PriceboardContext *ctx,
                              int ch,
                              int *selected,
@@ -69,6 +81,7 @@ bool priceboard_handle_input(const PriceboardContext *ctx,
                              int *chart_symbol_index,
                              const ChartContext *chart_ctx);
 
+/** @brief Handle mouse input on the price board. */
 void priceboard_handle_mouse(const PriceboardContext *ctx,
                              const MEVENT ev,
                              int *selected,
@@ -80,5 +93,7 @@ void priceboard_handle_mouse(const PriceboardContext *ctx,
                              int *chart_cursor_idx,
                              int *chart_symbol_index,
                              const ChartContext *chart_ctx);
+
+///@}
 
 #endif

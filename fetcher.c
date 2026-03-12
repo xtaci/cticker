@@ -39,8 +39,10 @@ SOFTWARE.
 #include "cticker.h"
 #include "runtime.h"
 
-// Background refresh cadence (seconds).
+/** Background refresh cadence (seconds). */
 #define REFRESH_INTERVAL 5
+
+/* ── Internal helpers ───────────────────────────────────────────────── */
 
 // Fetch all symbols into a scratch buffer without holding the UI lock.
 static void fetch_all_symbols(const Config *config,
@@ -70,6 +72,8 @@ static void apply_updated_tickers(RuntimeContext *ctx,
     }
     pthread_mutex_unlock(&ctx->data_mutex);
 }
+
+/* ── Public API ────────────────────────────────────────────────────── */
 
 // Initial synchronous fetch so the first render has data.
 int fetcher_initial_fetch(RuntimeContext *ctx) {

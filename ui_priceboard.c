@@ -32,6 +32,8 @@ SOFTWARE.
 #include <time.h>
 #include "ui_internal.h"
 
+/* ── Layout constants ──────────────────────────────────────────────── */
+
 // Timing and formatting constants.
 #define PRICE_FLICKER_DURATION_MS 500
 #define PRICE_CHANGE_EPSILON 1e-9
@@ -43,6 +45,8 @@ SOFTWARE.
 #define VOLUME_COL 88
 #define TRADES_COL 108
 #define QUOTE_COL 126
+
+/* ── Price cell rendering helpers ───────────────────────────────────── */
 
 // Render the price column cell with the appropriate color treatment for
 // direction, selection state, and the short-lived flicker animation.
@@ -89,6 +93,8 @@ static void draw_change_cell(int y, const char *change_str, bool change_up,
         wattroff(main_win, COLOR_PAIR(pair) | A_BOLD);
     }
 }
+
+/* ── Main price board drawing ──────────────────────────────────────── */
 
 // Draw the ticker board listing all configured symbols along with their latest
 // price, change, and a transient flicker for updated rows.

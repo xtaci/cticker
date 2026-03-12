@@ -43,21 +43,13 @@ SOFTWARE.
 #include <unistd.h>
 #include <stdatomic.h>
 #include <time.h>
-#if defined(__has_include)
-#  if __has_include(<ncursesw/ncurses.h>)
-#    include <ncursesw/ncurses.h>
-#  elif __has_include(<ncurses.h>)
-#    include <ncurses.h>
-#  else
-#    error "ncurses headers not found"
-#  endif
-#else
-#  include <ncurses.h>
-#endif
+#include "ncurses_compat.h"
 #include "cticker.h"
 #include "chart.h"
 #include "priceboard.h"
 #include "runtime.h"
+
+/* ── Event loop ────────────────────────────────────────────────────── */
 
 /**
  * @brief Main UI loop dispatching draw/input for board vs chart.
@@ -153,6 +145,8 @@ static void run_event_loop(RuntimeContext *runtime) {
         free(chart_points);
     }
 }
+
+/* ── Entry point ───────────────────────────────────────────────────── */
 
 /**
  * @brief Program entry point.

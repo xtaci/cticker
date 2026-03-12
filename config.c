@@ -41,6 +41,8 @@ SOFTWARE.
 #include <ctype.h>
 #include "cticker.h"
 
+/* ── Internal helpers ───────────────────────────────────────────────── */
+
 /**
  * @brief Resolve the home directory.
  *
@@ -72,6 +74,8 @@ static char* trim_whitespace(char *str) {
     end[1] = '\0';
     return str;
 }
+
+/* ── Public API ────────────────────────────────────────────────────── */
 
 /**
  * @brief Load configuration from $HOME/.cticker.conf.

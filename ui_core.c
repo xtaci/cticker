@@ -34,24 +34,30 @@ SOFTWARE.
 #include <string.h>
 #include "ui_internal.h"
 
+/* ── ncurses window and color state ─────────────────────────────────── */
+
 // ncurses window for all rendering in this module.
 WINDOW *main_win = NULL;
 // Whether terminal supports colors (set during init_ui()).
 bool colors_available = false;
 
-// Price board history and viewport state.
+/* ── Price board history and viewport state ─────────────────────────── */
+
 double last_prices[MAX_SYMBOLS];
 int last_visible_count = 0;
 int price_board_view_start_y = 4;
 int price_board_view_rows = 0;
 int price_board_scroll_offset = 0;
 
-// Chart viewport state used for hit-testing.
+/* ── Chart viewport state (used for mouse hit-testing) ─────────────── */
+
 int chart_view_start_x = 0;
 int chart_view_visible_points = 0;
 int chart_view_start_idx = 0;
 int chart_view_stride = 1;
 int chart_view_total_points = 0;
+
+/* ── Footer status panel ───────────────────────────────────────────── */
 
 // Atomic status shown in the footer bar.
 static _Atomic StatusPanelState status_panel_state = STATUS_PANEL_NORMAL;
@@ -105,6 +111,8 @@ static int status_panel_pair(StatusPanelState state) {
             return COLOR_PAIR_STATUS_PANEL;
     }
 }
+
+/* ── Footer bar rendering ──────────────────────────────────────────── */
 
 // Set footer status atomically (used by fetch thread).
 void ui_set_status_panel_state(StatusPanelState state) {
@@ -188,6 +196,8 @@ void draw_footer_bar(const char *text) {
         }
     }
 }
+
+/* ── ncurses initialization and teardown ───────────────────────────── */
 
 // Initialize ncurses and prepare the root window plus color palette.
 void init_ui(void) {

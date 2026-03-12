@@ -43,9 +43,16 @@ SOFTWARE.
 #include <time.h>
 #include "cticker.h"
 
+/* ── Constants ─────────────────────────────────────────────────────── */
+
 #define BINANCE_API_BASE "https://api.binance.com"
 #define BINANCE_TICKER_URL BINANCE_API_BASE "/api/v3/ticker/24hr?symbol=%s"
 #define BINANCE_KLINES_URL BINANCE_API_BASE "/api/v3/klines?symbol=%s&interval=%s&limit=%d"
+
+/** Maximum seconds to wait for a single HTTP request. */
+#define API_TIMEOUT_SECONDS 10L
+
+/* ── HTTP response buffer ─────────────────────────────────────────── */
 
 /**
  * @brief In-memory buffer for the HTTP response body.
@@ -78,6 +85,8 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
     return realsize;
 }
 
+/* ── Ticker data endpoint ─────────────────────────────────────────── */
+
 /**
  * @brief Fetch latest ticker data from Binance.
  *
@@ -102,7 +111,7 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
     /* Keep UI responsive even on slow networks. */
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, API_TIMEOUT_SECONDS);
     
     res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
@@ -112,7 +121,7 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
         return -1;
     }
     
-    /* Parse JSON response (expected to be an object). */
+    /* ── Parse JSON response ───────────────────────────────────────── */
     json_error_t error;
     json_t *root = json_loads(response.data, 0, &error);
     free(response.data);
@@ -121,7 +130,7 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
         return -1;
     }
     
-    /* Extract data into the caller-owned output struct. */
+    /* ── Extract fields into the caller-owned output struct ─────── */
     snprintf(data->symbol, sizeof(data->symbol), "%s", symbol);
     data->price = 0.0;
     data->change_24h = 0.0;
@@ -204,6 +213,8 @@ int fetch_ticker_data(const char *symbol, TickerData *data) {
     return 0;
 }
 
+/* ── Historical kline endpoint ────────────────────────────────────── */
+
 /**
  * @brief Convert UI period selection into Binance kline interval + request limit.
  *
@@ -280,7 +291,7 @@ int fetch_historical_data(const char *symbol, Period period,
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, API_TIMEOUT_SECONDS);
     
     res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
@@ -290,7 +301,7 @@ int fetch_historical_data(const char *symbol, Period period,
         return -1;
     }
     
-    /* Parse JSON response (expected to be an array). */
+    /* ── Parse JSON response (array of kline arrays) ─────────────── */
     json_error_t error;
     json_t *root = json_loads(response.data, 0, &error);
     free(response.data);

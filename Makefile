@@ -24,7 +24,7 @@ all: $(TARGET)
 $(TARGET): $(OBJECTS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(PKG_LDFLAGS)
 
-%.o: %.c cticker.h
+%.o: %.c cticker.h ncurses_compat.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PKG_CFLAGS) -c $< -o $@
 
 clean:
